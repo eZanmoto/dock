@@ -1,0 +1,23 @@
+[package]
+authors = ["Sean Kelleher <ezanmoto@gmail.com>"]
+categories = [
+    "command-line-utilities",
+    "development-tools",
+    "development-tools::build-utils",
+]
+description = "A tool for using Docker containers as environments"
+keywords = ["dependencies"]
+license = "MIT"
+name = "dock"
+readme = "README.md"
+repository = "https://github.com/ezanmoto/dock"
+version = "0.1.0"
+
+[dependencies]
+clap = "2.33.3"
+snafu = "0.6.9"
+
+[dev-dependencies]
+assert_cmd = "1.0.1"
+indoc = "1.0.2"
+maplit = "1.0.2"
