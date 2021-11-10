@@ -52,3 +52,15 @@ $(tgt_test_dir): $(tgt_dir)
 
 $(tgt_dir):
 	mkdir '$@'
+
+.PHONY: clean
+clean:
+	docker rmi \
+		$(shell \
+			docker images \
+				| grep \
+					'$(test_img_namespace)' \
+				| cut \
+					--delimiter=' ' \
+					--field=1 \
+		)
