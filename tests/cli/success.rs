@@ -299,3 +299,31 @@ fn rebuild_unchanged_context_doesnt_replace_image() {
     // (D)
     assert_eq!(new_build.img_id(), old_image_id);
 }
+
+#[test]
+// Given (1) a valid Dockerfile named `test.Dockerfile`
+//     AND (2) the target image doesn't already exist
+// When the `rebuild` subcommand is run with a `--file` argument
+// Then (A) the command is successful
+//     AND (B) the command STDERR is empty
+//     AND (C) the command STDOUT is formatted correctly
+fn file_argument() {
+    // (1)
+    let test = test_setup::create(
+        "file_argument",
+        &hashmap!{
+            "test.Dockerfile" => indoc!{"
+                FROM alpine:3.14.2
+            "},
+        },
+    );
+    // (2)
+    assert_docker_rmi(&test.image_tagged_name);
+    let mut cmd = new_test_cmd(test.dir, &test.image_tagged_name);
+    cmd.arg("--file=test.Dockerfile");
+
+    cmd.assert();
+
+    // (A) (B) (C)
+    assert_docker_build(cmd.assert(), &test.image_tagged_name);
+}

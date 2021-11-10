@@ -38,6 +38,7 @@ fn main() {
             ])
             .subcommands(vec![
                 SubCommand::with_name("rebuild")
+                    .setting(AppSettings::TrailingVarArg)
                     .about(install_about)
                     .args(&[
                         Arg::with_name(cache_tag_flag)
@@ -62,7 +63,6 @@ fn main() {
                                  form `name:tag`.",
                             ),
                         Arg::with_name(docker_args_flag)
-                            .allow_hyphen_values(true)
                             .multiple(true)
                             .help("Arguments to pass to `docker build`"),
                     ]),
@@ -96,6 +96,11 @@ fn main() {
                     None => vec![],
                 };
 
+            if let Some(i) = index_of_tag_flag(&docker_args) {
+                eprintln!("unsupported argument: `{}`", docker_args[i]);
+                process::exit(1);
+            }
+
             match rebuild(&target_img, &cache_img, docker_args) {
                 Ok(exit_status) => {
                     let exit_code =
@@ -122,6 +127,21 @@ fn main() {
             );
         },
     }
+}
+
+fn index_of_tag_flag(args: &Vec<&str>) -> Option<usize> {
+    // Note that this is a naive approach to checking whether the tag flag is
+    // present, as it has the potential to give a false positive in the case
+    // where the tag string is passed as a value to another flag. However, we
+    // take this approach for simplicity, under the assumption that the case of
+    // a tag string being passed as a value is unlikely. This functionality
+    // would need to be refined if this assumption doesn't hold in practice.
+    for (i, arg) in args.iter().enumerate() {
+        if arg == &"-t" || arg == &"--tag" || arg.starts_with("--tag=") {
+            return Some(i);
+        }
+    }
+    return None;
 }
 
 fn rebuild(target_img: &str, cache_img: &str, args: Vec<&str>)
