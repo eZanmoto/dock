@@ -6,7 +6,8 @@ use std::collections::HashMap;
 use std::fs;
 use std::panic;
 
-const IMAGE_NAME_ROOT: &str = "ezanmoto/dock.test";
+const IMAGE_NAME_ROOT: &str = env!("TEST_IMG_NAMESPACE");
+const TEST_DIR: &str = env!("TEST_DIR");
 
 pub fn create(
     test_name: &str,
@@ -32,7 +33,7 @@ pub struct TestSetup {
 }
 
 pub fn assert_create_root_dir(name: &str) -> String {
-    assert_create_dir(env!("TEST_DIR").to_string(), name)
+    assert_create_dir(TEST_DIR.to_string(), name)
 }
 
 pub fn assert_create_dir(dir: String, name: &str) -> String {

@@ -3,6 +3,7 @@
 tgt_dir:=target
 tgt_test_dir:=$(tgt_dir)/tests
 test_imgs:=alpine:3.14.2
+test_img_namespace:=ezanmoto/dock.test
 
 .PHONY: check
 check: \
@@ -19,7 +20,8 @@ check_intg: $(tgt_test_dir)
 			>/dev/null \
 		|| docker pull \
 			$(test_imgs)
-	TEST_DIR='$(shell pwd)/$(tgt_test_dir)' \
+	TEST_IMG_NAMESPACE='$(test_img_namespace)' \
+		TEST_DIR='$(shell pwd)/$(tgt_test_dir)' \
 		cargo test \
 			-- \
 			--show-output \
@@ -27,7 +29,8 @@ check_intg: $(tgt_test_dir)
 
 .PHONY: check_lint
 check_lint:
-	TEST_DIR='$(shell pwd)/$(tgt_test_dir)' \
+	TEST_IMG_NAMESPACE='$(test_img_namespace)' \
+		TEST_DIR='$(shell pwd)/$(tgt_test_dir)' \
 		cargo clippy \
 			--all-targets \
 			--all-features \
