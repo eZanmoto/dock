@@ -6,7 +6,7 @@ FROM rust:1.45.2-stretch
 
 RUN \
     rustup component add \
-        clippy
+            clippy
 
 RUN \
     curl \
