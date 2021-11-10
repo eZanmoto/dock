@@ -24,7 +24,7 @@ Usage
 first argument to be an image name:
 
     dock rebuild ezanmoto/dock.build -f build.Dockerfile .
-    dock rebuild ezanmoto/dock.build < build.Dockerfile
+    dock rebuild ezanmoto/dock.build - < build.Dockerfile
 
 This "rebuilds" the image by building a new image with the given name, and
 removing the old image with the same name, if any. This can allow developers to
