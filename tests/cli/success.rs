@@ -299,26 +299,3 @@ fn rebuild_unchanged_context_doesnt_replace_image() {
     // (D)
     assert_eq!(new_build.img_id(), old_image_id);
 }
-
-#[test]
-// Given (1) the Dockerfile contains the `false` command
-// When the `rebuild` subcommand is run
-// Then (A) the command is not successful
-fn failing_dockerfile_returns_non_zero() {
-    let test_name = "failing_dockerfile_returns_non_zero";
-    let test = test_setup::create(
-        test_name,
-        &hashmap!{
-            "Dockerfile" => indoc!{"
-                FROM alpine:3.14.2
-                RUN false
-            "},
-        },
-    );
-    let mut cmd = new_test_cmd(test.dir, &test.image_tagged_name);
-
-    let cmd_result = cmd.assert();
-
-    // (A)
-    cmd_result.failure();
-}
