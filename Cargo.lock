@@ -61,11 +61,11 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
 name = "dock"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "assert_cmd 1.0.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "clap 2.33.3 (registry+https://github.com/rust-lang/crates.io-index)",
- "indoc 1.0.3 (registry+https://github.com/rust-lang/crates.io-index)",
+ "indoc 1.0.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "maplit 1.0.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "snafu 0.6.9 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
@@ -80,7 +80,7 @@ dependencies = [
 
 [[package]]
 name = "indoc"
-version = "1.0.3"
+version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
  "unindent 0.1.7 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -238,7 +238,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 "checksum difference 2.0.0 (registry+https://github.com/rust-lang/crates.io-index)" = "524cbf6897b527295dff137cec09ecf3a05f4fddffd7dfcd1585403449e74198"
 "checksum doc-comment 0.3.3 (registry+https://github.com/rust-lang/crates.io-index)" = "fea41bba32d969b513997752735605054bc0dfa92b4c56bf1189f2e174be7a10"
 "checksum hermit-abi 0.1.17 (registry+https://github.com/rust-lang/crates.io-index)" = "5aca5565f760fb5b220e499d72710ed156fdb74e631659e99377d9ebfbd13ae8"
-"checksum indoc 1.0.3 (registry+https://github.com/rust-lang/crates.io-index)" = "e5a75aeaaef0ce18b58056d306c27b07436fbb34b8816c53094b76dd81803136"
+"checksum indoc 1.0.2 (registry+https://github.com/rust-lang/crates.io-index)" = "644defcefee68d7805653a682e99a2e2a5014a1fc3cc9be7059a215844eeea6f"
 "checksum libc 0.2.76 (registry+https://github.com/rust-lang/crates.io-index)" = "755456fae044e6fa1ebbbd1b3e902ae19e73097ed4ed87bb79934a867c007bc3"
 "checksum maplit 1.0.2 (registry+https://github.com/rust-lang/crates.io-index)" = "3e2e65a1a2e43cfcb47a895c4c8b10d1f4a61097f9f254f183aee60cad9c651d"
 "checksum predicates 1.0.5 (registry+https://github.com/rust-lang/crates.io-index)" = "96bfead12e90dccead362d62bb2c90a5f6fc4584963645bc7f71a735e0b0735a"
