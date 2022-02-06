@@ -1,17 +1,13 @@
-// Copyright 2021 Sean Kelleher. All rights reserved.
+// Copyright 2021-2022 Sean Kelleher. All rights reserved.
 // Use of this source code is governed by an MIT
 // licence that can be found in the LICENCE file.
-
-// NOTE Many of the tests contain a test file file called `test.txt` which
-// contains the test name as content. In addition to being useful for verifying
-// content, having different content in these files prevents Docker from
-// reusing cached image layers across tests.
 
 use std::process::Command;
 use std::str;
 use std::str::Lines;
 
 use crate::test_setup;
+use crate::test_setup::Definition;
 
 use crate::assert_cmd::Command as AssertCommand;
 use crate::assert_cmd::assert::Assert as AssertOutput;
@@ -28,16 +24,13 @@ use crate::assert_cmd::assert::Assert as AssertOutput;
 fn rebuild_creates_image_if_none() {
     // (1)
     let test_name = "rebuild_creates_image_if_none";
-    let test = test_setup::create(
-        test_name,
-        &hashmap!{
-            "Dockerfile" => indoc!{"
-                FROM alpine:3.14.2
-                COPY test.txt /
-            "},
-            "test.txt" => test_name,
-        },
-    );
+    let test = test_setup::assert_apply(Definition{
+        name: test_name,
+        dockerfile_steps: indoc!{"
+            COPY test.txt /
+        "},
+        fs: &hashmap!{"test.txt" => test_name},
+    });
     // (2)
     assert_docker_rmi(&test.image_tagged_name);
     let mut cmd = new_test_cmd(test.dir, &test.image_tagged_name);
@@ -216,14 +209,14 @@ struct DockerBuildLayer {
 //     AND (F) a container created from the target image contains the new file
 fn rebuild_replaces_old_image() {
     let test_name = "rebuild_replaces_old_image";
-    let mut test_dir_layout = hashmap!{
-        "Dockerfile" => indoc!{"
-            FROM alpine:3.14.2
+    let mut test_dir_layout = hashmap!{"test.txt" => test_name};
+    let test = test_setup::assert_apply(Definition{
+        name: test_name,
+        dockerfile_steps: indoc!{"
             COPY test.txt /
         "},
-        "test.txt" => test_name,
-    };
-    let test = test_setup::create(test_name, &test_dir_layout);
+        fs: &test_dir_layout,
+    });
     let mut cmd = new_test_cmd(test.dir, &test.image_tagged_name);
     let build = assert_docker_build(cmd.assert(), &test.image_tagged_name);
     // (1)
@@ -237,7 +230,13 @@ fn rebuild_replaces_old_image() {
     // (3)
     let new_test_name = &(test_name.to_owned() + ".update");
     test_dir_layout.insert("test.txt", new_test_name);
-    let updated_test = test_setup::create(new_test_name, &test_dir_layout);
+    let updated_test = test_setup::assert_apply(Definition{
+        name: new_test_name,
+        dockerfile_steps: indoc!{"
+            COPY test.txt /
+        "},
+        fs: &test_dir_layout,
+    });
     // We rebuild the main test image, but we build it in the context of the
     // updated test directory. This allows us to validate the directory
     // contents for the purposes of debugging.
@@ -278,15 +277,13 @@ fn get_local_docker_image_ids() -> Vec<String> {
 //     AND (D) the target image has the same ID
 fn rebuild_unchanged_context_doesnt_replace_image() {
     let test_name = "rebuild_unchanged_context_doesnt_replace_image";
-    let test = test_setup::create(
-        test_name,
-        &hashmap!{
-            "Dockerfile" => indoc!{"
-                FROM alpine:3.14.2
-                RUN touch test.txt
-            "},
-        },
-    );
+    let test = test_setup::assert_apply(Definition{
+        name: test_name,
+        dockerfile_steps: indoc!{"
+            RUN touch test.txt
+        "},
+        fs: &hashmap!{},
+    });
     let mut cmd = new_test_cmd(test.dir, &test.image_tagged_name);
     let build = assert_docker_build(cmd.assert(), &test.image_tagged_name);
     // (1)
@@ -309,12 +306,12 @@ fn rebuild_unchanged_context_doesnt_replace_image() {
 //     AND (C) the command STDOUT is formatted correctly
 fn file_argument() {
     // (1)
-    let test = test_setup::create(
-        "file_argument",
-        &hashmap!{
-            "test.Dockerfile" => indoc!{"
-                FROM alpine:3.14.2
-            "},
+    let test = test_setup::assert_apply_with_dockerfile_name(
+        "test.Dockerfile",
+        Definition{
+            name: "file_argument",
+            dockerfile_steps: "",
+            fs: &hashmap!{},
         },
     );
     // (2)

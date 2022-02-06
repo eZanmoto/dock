@@ -1,8 +1,9 @@
-// Copyright 2021 Sean Kelleher. All rights reserved.
+// Copyright 2021-2022 Sean Kelleher. All rights reserved.
 // Use of this source code is governed by an MIT
 // licence that can be found in the LICENCE file.
 
 use crate::test_setup;
+use crate::test_setup::Definition;
 
 use crate::assert_cmd::Command as AssertCommand;
 
@@ -11,16 +12,13 @@ use crate::assert_cmd::Command as AssertCommand;
 // When the `rebuild` subcommand is run
 // Then (A) the command is not successful
 fn failing_dockerfile_returns_non_zero() {
-    let test_name = "failing_dockerfile_returns_non_zero";
-    let test = test_setup::create(
-        test_name,
-        &hashmap!{
-            "Dockerfile" => indoc!{"
-                FROM alpine:3.14.2
-                RUN false
-            "},
-        },
-    );
+    let test = test_setup::assert_apply(Definition{
+        name: "failing_dockerfile_returns_non_zero",
+        dockerfile_steps: indoc!{"
+            RUN false
+        "},
+        fs: &hashmap!{},
+    });
     let mut cmd = new_test_cmd(test.dir, &test.image_tagged_name);
 
     let cmd_result = cmd.assert();
@@ -51,14 +49,11 @@ fn new_test_cmd(
 //     AND (C) the command STDERR contains an error message
 fn short_tag_argument() {
     // (1)
-    let test = test_setup::create(
-        "short_tag_argument",
-        &hashmap!{
-            "Dockerfile" => indoc!{"
-                FROM alpine:3.14.2
-            "},
-        },
-    );
+    let test = test_setup::assert_apply(Definition{
+        name: "short_tag_argument",
+        dockerfile_steps: "",
+        fs: &hashmap!{},
+    });
     let mut cmd = new_test_cmd(test.dir, &test.image_tagged_name);
     let flag = "-t";
     cmd.args(&[flag, &test.image_tagged_name]);
@@ -82,14 +77,11 @@ fn short_tag_argument() {
 //     AND (C) the command STDERR contains an error message
 fn long_tag_argument() {
     // (1)
-    let test = test_setup::create(
-        "long_tag_argument",
-        &hashmap!{
-            "Dockerfile" => indoc!{"
-                FROM alpine:3.14.2
-            "},
-        },
-    );
+    let test = test_setup::assert_apply(Definition{
+        name: "long_tag_argument",
+        dockerfile_steps: "",
+        fs: &hashmap!{},
+    });
     let mut cmd = new_test_cmd(test.dir, &test.image_tagged_name);
     let flag = "--tag";
     cmd.args(&[flag, &test.image_tagged_name]);
@@ -113,14 +105,11 @@ fn long_tag_argument() {
 //     AND (C) the command STDERR contains an error message
 fn prefix_tag_argument() {
     // (1)
-    let test = test_setup::create(
-        "prefix_tag_argument",
-        &hashmap!{
-            "Dockerfile" => indoc!{"
-                FROM alpine:3.14.2
-            "},
-        },
-    );
+    let test = test_setup::assert_apply(Definition{
+        name: "prefix_tag_argument",
+        dockerfile_steps: "",
+        fs: &hashmap!{},
+    });
     let mut cmd = new_test_cmd(test.dir, &test.image_tagged_name);
     let arg = &("--tag=".to_owned() + &test.image_tagged_name);
     cmd.arg(arg);
