@@ -21,12 +21,18 @@ pub fn assert_apply_with_dockerfile_name<'a>(
     -> References
 {
     let mut fs_state = defn.fs.clone();
+
+    // NOTE `RUN echo {test_name}` ensures that the image created for the test
+    // is unique. See `tests/cli/README.md` for more information on why this is
+    // used.
     let dockerfile = &formatdoc!{
         "
             FROM {base_img}
+            RUN echo {test_name}
             {dockerfile_steps}
         ",
         base_img = TEST_BASE_IMG,
+        test_name = defn.name,
         dockerfile_steps = defn.dockerfile_steps,
     };
 
