@@ -2,7 +2,7 @@
 # taken that collisions don't occur between Rust output and local output.
 tgt_dir:=target
 tgt_test_dir:=$(tgt_dir)/tests
-test_imgs:=alpine:3.14.2
+test_base_img:=alpine:3.14.2
 test_img_namespace:=ezanmoto/dock.test
 
 .PHONY: check
@@ -16,12 +16,13 @@ check: \
 .PHONY: check_intg
 check_intg: $(tgt_test_dir)
 	docker image inspect \
-			$(test_imgs) \
+			$(test_base_img) \
 			>/dev/null \
 		|| docker pull \
-			$(test_imgs)
+			$(test_base_img)
 	TEST_IMG_NAMESPACE='$(test_img_namespace)' \
 		TEST_DIR='$(shell pwd)/$(tgt_test_dir)' \
+		TEST_BASE_IMG='$(test_base_img)' \
 		cargo test \
 			-- \
 			--show-output \
