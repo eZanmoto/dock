@@ -12,7 +12,7 @@ use crate::assert_cmd::Command as AssertCommand;
 // When the `rebuild` subcommand is run
 // Then (A) the command is not successful
 fn failing_dockerfile_returns_non_zero() {
-    let test = test_setup::assert_apply(Definition{
+    let test = test_setup::assert_apply(&Definition{
         name: "failing_dockerfile_returns_non_zero",
         dockerfile_steps: indoc!{"
             RUN false
@@ -49,7 +49,7 @@ fn new_test_cmd(
 //     AND (C) the command STDERR contains an error message
 fn short_tag_argument() {
     // (1)
-    let test = test_setup::assert_apply(Definition{
+    let test = test_setup::assert_apply(&Definition{
         name: "short_tag_argument",
         dockerfile_steps: "",
         fs: &hashmap!{},
@@ -77,7 +77,7 @@ fn short_tag_argument() {
 //     AND (C) the command STDERR contains an error message
 fn long_tag_argument() {
     // (1)
-    let test = test_setup::assert_apply(Definition{
+    let test = test_setup::assert_apply(&Definition{
         name: "long_tag_argument",
         dockerfile_steps: "",
         fs: &hashmap!{},
@@ -105,7 +105,7 @@ fn long_tag_argument() {
 //     AND (C) the command STDERR contains an error message
 fn prefix_tag_argument() {
     // (1)
-    let test = test_setup::assert_apply(Definition{
+    let test = test_setup::assert_apply(&Definition{
         name: "prefix_tag_argument",
         dockerfile_steps: "",
         fs: &hashmap!{},

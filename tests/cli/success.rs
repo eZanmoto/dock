@@ -24,7 +24,7 @@ use crate::assert_cmd::assert::Assert as AssertOutput;
 fn rebuild_creates_image_if_none() {
     // (1)
     let test_name = "rebuild_creates_image_if_none";
-    let test = test_setup::assert_apply(Definition{
+    let test = test_setup::assert_apply(&Definition{
         name: test_name,
         dockerfile_steps: indoc!{"
             COPY test.txt /
@@ -210,7 +210,7 @@ struct DockerBuildLayer {
 fn rebuild_replaces_old_image() {
     let test_name = "rebuild_replaces_old_image";
     let mut test_dir_layout = hashmap!{"test.txt" => test_name};
-    let test = test_setup::assert_apply(Definition{
+    let test = test_setup::assert_apply(&Definition{
         name: test_name,
         dockerfile_steps: indoc!{"
             COPY test.txt /
@@ -230,7 +230,7 @@ fn rebuild_replaces_old_image() {
     // (3)
     let new_test_name = &(test_name.to_owned() + ".update");
     test_dir_layout.insert("test.txt", new_test_name);
-    let updated_test = test_setup::assert_apply(Definition{
+    let updated_test = test_setup::assert_apply(&Definition{
         name: new_test_name,
         dockerfile_steps: indoc!{"
             COPY test.txt /
@@ -277,7 +277,7 @@ fn get_local_docker_image_ids() -> Vec<String> {
 //     AND (D) the target image has the same ID
 fn rebuild_unchanged_context_doesnt_replace_image() {
     let test_name = "rebuild_unchanged_context_doesnt_replace_image";
-    let test = test_setup::assert_apply(Definition{
+    let test = test_setup::assert_apply(&Definition{
         name: test_name,
         dockerfile_steps: indoc!{"
             RUN touch test.txt
@@ -308,7 +308,7 @@ fn file_argument() {
     // (1)
     let test = test_setup::assert_apply_with_dockerfile_name(
         "test.Dockerfile",
-        Definition{
+        &Definition{
             name: "file_argument",
             dockerfile_steps: "",
             fs: &hashmap!{},

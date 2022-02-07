@@ -32,6 +32,7 @@ check_intg: $(tgt_test_dir)
 check_lint:
 	TEST_IMG_NAMESPACE='$(test_img_namespace)' \
 		TEST_DIR='$(shell pwd)/$(tgt_test_dir)' \
+		TEST_BASE_IMG='$(test_base_img)' \
 		cargo clippy \
 			--all-targets \
 			--all-features \

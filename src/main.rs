@@ -1,4 +1,4 @@
-// Copyright 2021 Sean Kelleher. All rights reserved.
+// Copyright 2021-2022 Sean Kelleher. All rights reserved.
 // Use of this source code is governed by an MIT
 // licence that can be found in the LICENCE file.
 
@@ -129,7 +129,7 @@ fn main() {
     }
 }
 
-fn index_of_tag_flag(args: &Vec<&str>) -> Option<usize> {
+fn index_of_tag_flag(args: &[&str]) -> Option<usize> {
     // Note that this is a naive approach to checking whether the tag flag is
     // present, as it has the potential to give a false positive in the case
     // where the tag string is passed as a value to another flag. However, we
@@ -141,7 +141,8 @@ fn index_of_tag_flag(args: &Vec<&str>) -> Option<usize> {
             return Some(i);
         }
     }
-    return None;
+
+    None
 }
 
 fn rebuild(target_img: &str, cache_img: &str, args: Vec<&str>)

@@ -10,13 +10,13 @@ const TEST_BASE_IMG: &str = env!("TEST_BASE_IMG");
 const IMAGE_NAME_ROOT: &str = env!("TEST_IMG_NAMESPACE");
 const TEST_DIR: &str = env!("TEST_DIR");
 
-pub fn assert_apply<'a>(defn: Definition<'a>) -> References {
-    assert_apply_with_dockerfile_name("Dockerfile", defn)
+pub fn assert_apply(defn: &Definition) -> References {
+    assert_apply_with_dockerfile_name("Dockerfile", &defn)
 }
 
-pub fn assert_apply_with_dockerfile_name<'a>(
+pub fn assert_apply_with_dockerfile_name(
     dockerfile_name: &str,
-    defn: Definition<'a>,
+    defn: &Definition,
 )
     -> References
 {
