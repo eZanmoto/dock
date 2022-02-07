@@ -23,14 +23,22 @@ Usage
 `dock rebuild` takes the same arguments as `docker build`, but requires the
 first argument to be an image name:
 
-    dock rebuild ezanmoto/dock.build -f build.Dockerfile .
-    dock rebuild ezanmoto/dock.build - < build.Dockerfile
+    dock rebuild ezanmoto/dock.build:v123 -f build.Dockerfile .
+    dock rebuild ezanmoto/dock.build:v123 - < build.Dockerfile
 
 This "rebuilds" the image by building a new image with the given name, and
 removing the old image with the same name, if any. This can allow developers to
 more easily build images repeatedly without leaving unnamed images behind. See
 [Docker Build `--replace`](https://seankelleher.ie/posts/docker_rbuild/) for
 more details on this concept.
+
+#### Container removal
+
+By default, `docker build` removes intermediate containers after a successful
+build, but leaves them after a failed build. `dock rebuild` is intended to be
+used for repeated rebuilds of Docker images, without leaving unused images and
+containers behind. As such, the default behaviour of `dock rebuild` is to always
+remove intermediate containers regardless of the build result.
 
 Development
 -----------

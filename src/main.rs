@@ -96,7 +96,7 @@ fn main() {
                     None => vec![],
                 };
 
-            if let Some(i) = index_of_tag_flag(&docker_args) {
+            if let Some(i) = index_of_first_unsupported_flag(&docker_args) {
                 eprintln!("unsupported argument: `{}`", docker_args[i]);
                 process::exit(1);
             }
@@ -129,7 +129,7 @@ fn main() {
     }
 }
 
-fn index_of_tag_flag(args: &[&str]) -> Option<usize> {
+fn index_of_first_unsupported_flag(args: &[&str]) -> Option<usize> {
     // Note that this is a naive approach to checking whether the tag flag is
     // present, as it has the potential to give a false positive in the case
     // where the tag string is passed as a value to another flag. However, we
@@ -137,7 +137,13 @@ fn index_of_tag_flag(args: &[&str]) -> Option<usize> {
     // a tag string being passed as a value is unlikely. This functionality
     // would need to be refined if this assumption doesn't hold in practice.
     for (i, arg) in args.iter().enumerate() {
-        if arg == &"-t" || arg == &"--tag" || arg.starts_with("--tag=") {
+        let matched =
+            arg == &"--force-rm"
+            || arg == &"-t"
+            || arg == &"--tag"
+            || arg.starts_with("--tag=");
+
+        if matched {
             return Some(i);
         }
     }
@@ -157,7 +163,12 @@ fn rebuild(target_img: &str, cache_img: &str, args: Vec<&str>)
             .context(TagFailed)?;
 
     let tag_flag = &format!("--tag={}", target_img);
-    let mut build_args = vec!["build", tag_flag];
+
+    // By default, Docker removes intermediate containers after a successful
+    // build, but leaves them after a failed build. We use `--force-rm` to
+    // remove them even if the build failed.
+    let mut build_args = vec!["build", tag_flag, "--force-rm"];
+
     build_args.extend(args);
 
     let build_status =

@@ -31,3 +31,15 @@ Test Files
 Many of the tests contain a test file file called `test.txt` in the image, which
 contains the test name as content. This is generally for the purpose of
 verifying that a container is being created from the correct image.
+
+Test Base Image
+---------------
+
+These tests are intended to be be passed the name of a "unique" base image that
+all test images will be based on. It is assumed that no containers, other than
+those created during testing, will exist from this base image. This is so that a
+check for containers descended from the base image can be performed after all
+tests have completed. The default behaviour of `dock` is to clean up all
+containers after they've run, whether they've been run as part of a `rebuild` or
+other command, so if any containers descended from the base image exist after
+testing, then this indicates that `dock` didn't clean up after all operations.

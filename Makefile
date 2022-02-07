@@ -2,7 +2,9 @@
 # taken that collisions don't occur between Rust output and local output.
 tgt_dir:=target
 tgt_test_dir:=$(tgt_dir)/tests
-test_base_img:=alpine:3.14.2
+test_base_img_name:=ezanmoto/dock.test_base
+test_base_img_tag:=latest
+test_base_img:=$(test_base_img_name):$(test_base_img_tag)
 test_img_namespace:=ezanmoto/dock.test
 
 .PHONY: check
@@ -15,11 +17,11 @@ check: \
 # predictable.
 .PHONY: check_intg
 check_intg: $(tgt_test_dir)
-	docker image inspect \
-			$(test_base_img) \
-			>/dev/null \
-		|| docker pull \
-			$(test_base_img)
+	bash scripts/docker_rbuild.sh \
+			$(test_base_img_name) \
+			$(test_base_img_tag) \
+			- \
+			< test_base.Dockerfile
 	TEST_IMG_NAMESPACE='$(test_img_namespace)' \
 		TEST_DIR='$(shell pwd)/$(tgt_test_dir)' \
 		TEST_BASE_IMG='$(test_base_img)' \
@@ -27,6 +29,10 @@ check_intg: $(tgt_test_dir)
 			-- \
 			--show-output \
 			$(TESTS)
+	# Descendents of the test base image indicate that `dock` didn't clean up
+	# after all operations. See "Test Base Image" in `tests/cli/README.md` for
+	# more information.
+	bash scripts/check_no_descendents.sh '$(test_base_img)'
 
 .PHONY: check_lint
 check_lint:
