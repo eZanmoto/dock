@@ -2,30 +2,47 @@
 // Use of this source code is governed by an MIT
 // licence that can be found in the LICENCE file.
 
+use std::collections::HashMap;
 use std::env;
+use std::error::Error;
 use std::ffi::OsStr;
+use std::fmt::Debug;
+use std::fs::File;
+use std::io;
 use std::io::Error as IoError;
+use std::io::Write;
 use std::process;
 use std::process::Command;
 use std::process::ExitStatus;
 use std::process::Output;
 
 extern crate clap;
+extern crate serde;
 extern crate snafu;
 
 use clap::App;
 use clap::AppSettings;
 use clap::Arg;
+use clap::ArgMatches;
 use clap::SubCommand;
+use serde::Deserialize;
 use snafu::ResultExt;
 use snafu::Snafu;
 
+const CACHE_TAG_FLAG: &str = "cache-tag";
+const TAGGED_IMG_FLAG: &str = "tagged-image";
+const DOCKER_ARGS_FLAG: &str = "docker-args";
+const ENV_FLAG: &str = "env";
+
 fn main() {
-    let install_about: &str =
+    let rebuild_about: &str =
         &"Replace a tagged Docker image with a new build".to_string();
-    let cache_tag_flag = "cache-tag";
-    let tagged_img_flag = "tagged-image";
-    let docker_args_flag = "docker-args";
+
+    let dock_config_path = "dock.yaml";
+    let run_about: &str = &format!(
+        "Run a command in an environment defined in `{}`",
+        dock_config_path,
+    );
 
     let args =
         App::new("dpnd")
@@ -39,10 +56,10 @@ fn main() {
             .subcommands(vec![
                 SubCommand::with_name("rebuild")
                     .setting(AppSettings::TrailingVarArg)
-                    .about(install_about)
+                    .about(rebuild_about)
                     .args(&[
-                        Arg::with_name(cache_tag_flag)
-                            .long(cache_tag_flag)
+                        Arg::with_name(CACHE_TAG_FLAG)
+                            .long(CACHE_TAG_FLAG)
                             .default_value("cached")
                             .help("The tag for the cache image")
                             .long_help(&format!(
@@ -52,17 +69,42 @@ fn main() {
                                  then its tag will be replaced by \
                                  `{cache_tag_flag}` for the duration of the \
                                  rebuild.",
-                                tagged_img_flag = tagged_img_flag,
-                                cache_tag_flag = cache_tag_flag,
+                                tagged_img_flag = TAGGED_IMG_FLAG,
+                                cache_tag_flag = CACHE_TAG_FLAG,
                             )),
-                        Arg::with_name(tagged_img_flag)
+                        Arg::with_name(TAGGED_IMG_FLAG)
                             .required(true)
                             .help("The tagged name for the new image")
                             .long_help(
                                 "The tagged name for the new image, in the \
                                  form `name:tag`.",
                             ),
-                        Arg::with_name(docker_args_flag)
+                        Arg::with_name(DOCKER_ARGS_FLAG)
+                            .multiple(true)
+                            .help("Arguments to pass to `docker build`"),
+                    ]),
+                SubCommand::with_name("run")
+                    .setting(AppSettings::TrailingVarArg)
+                    .about(run_about)
+                    .args(&[
+                        Arg::with_name(CACHE_TAG_FLAG)
+                            .long(CACHE_TAG_FLAG)
+                            .default_value("cached")
+                            .help("The tag for the cache image")
+                            .long_help(&format!(
+                                "The tag to use for the image that will be \
+                                 replaced by the rebuild. If an image with \
+                                 the tagged name `{tagged_img_flag}` exists \
+                                 then its tag will be replaced by \
+                                 `{cache_tag_flag}` for the duration of the \
+                                 rebuild.",
+                                tagged_img_flag = TAGGED_IMG_FLAG,
+                                cache_tag_flag = CACHE_TAG_FLAG,
+                            )),
+                        Arg::with_name(ENV_FLAG)
+                            .required(true)
+                            .help("The environment to run"),
+                        Arg::with_name(DOCKER_ARGS_FLAG)
                             .multiple(true)
                             .help("Arguments to pass to `docker build`"),
                     ]),
@@ -71,51 +113,22 @@ fn main() {
 
     match args.subcommand() {
         ("rebuild", Some(sub_args)) => {
-            let target_img = sub_args.value_of(tagged_img_flag).unwrap();
-            let cache_tag = sub_args.value_of(cache_tag_flag).unwrap();
-
-            let target_img_parts =
-                target_img.split(':').collect::<Vec<&str>>();
-
-            let img_name =
-                if let [name, _tag] = target_img_parts.as_slice() {
-                    name
-                } else {
-                    eprintln!(
-                        "`{}` must contain exactly one `:`",
-                        tagged_img_flag,
-                    );
-                    process::exit(1);
-                };
-
-            let cache_img = format!("{}:{}", img_name, cache_tag);
-
             let docker_args =
-                match sub_args.values_of(docker_args_flag) {
+                match sub_args.values_of(DOCKER_ARGS_FLAG) {
                     Some(vs) => vs.collect(),
                     None => vec![],
                 };
 
-            if let Some(i) = index_of_first_unsupported_flag(&docker_args) {
-                eprintln!("unsupported argument: `{}`", docker_args[i]);
-                process::exit(1);
-            }
-
-            match rebuild(&target_img, &cache_img, docker_args) {
-                Ok(exit_status) => {
-                    let exit_code =
-                        if let Some(code) = exit_status.code() {
-                            code
-                        } else if exit_status.success() {
-                            0
-                        } else {
-                            1
-                        };
-
-                    process::exit(exit_code);
-                },
-                Err(v) => eprintln!("{:?}", v),
-            }
+            let exit_code = rebuild(
+                sub_args.value_of(TAGGED_IMG_FLAG).unwrap(),
+                sub_args.value_of(CACHE_TAG_FLAG).unwrap(),
+                docker_args,
+            );
+            process::exit(exit_code);
+        },
+        ("run", Some(sub_args)) => {
+            let exit_code = run(dock_config_path, sub_args);
+            process::exit(exit_code);
         },
         (arg_name, sub_args) => {
             // All subcommands defined in `args_defn` should be handled here,
@@ -126,6 +139,55 @@ fn main() {
                 sub_args,
             );
         },
+    }
+}
+
+fn rebuild(target_img: &str, cache_tag: &str, docker_args: Vec<&str>) -> i32 {
+    let target_img_parts =
+        target_img.split(':').collect::<Vec<&str>>();
+
+    let img_name =
+        if let [name, _tag] = target_img_parts.as_slice() {
+            name
+        } else {
+            eprintln!(
+                "`{}` must contain exactly one `:`",
+                TAGGED_IMG_FLAG,
+            );
+            return 1;
+        };
+
+    let cache_img = new_tagged_img_name(img_name, cache_tag);
+
+    if let Some(i) = index_of_first_unsupported_flag(&docker_args) {
+        eprintln!("unsupported argument: `{}`", docker_args[i]);
+        return 1;
+    }
+
+    let rebuild_result = rebuild_with_streaming_output(
+        &target_img,
+        &cache_img,
+        docker_args,
+    );
+    match rebuild_result {
+        Ok(exit_status) => {
+            exit_code_from_exit_status(exit_status)
+        },
+        Err(e) => {
+            eprintln!("{:?}", e);
+
+            1
+        },
+    }
+}
+
+fn exit_code_from_exit_status(status: ExitStatus) -> i32 {
+    if let Some(code) = status.code() {
+        code
+    } else if status.success() {
+        0
+    } else {
+        1
     }
 }
 
@@ -151,8 +213,36 @@ fn index_of_first_unsupported_flag(args: &[&str]) -> Option<usize> {
     None
 }
 
-fn rebuild(target_img: &str, cache_img: &str, args: Vec<&str>)
-    -> Result<ExitStatus, RebuildError>
+fn rebuild_with_streaming_output(
+    target_img: &str,
+    cache_img: &str,
+    args: Vec<&str>,
+)
+    -> Result<ExitStatus, RebuildError<ExitStatus, SpawnDockerError>>
+{
+    rebuild_img(
+        target_img,
+        cache_img,
+        args,
+        |build_args| {
+            let build_result = stream_docker(build_args)?;
+
+            Ok((build_result, build_result.success()))
+        },
+    )
+}
+
+fn rebuild_img<F, V, E>(
+    target_img: &str,
+    cache_img: &str,
+    args: Vec<&str>,
+    run_docker: F,
+)
+    -> Result<V, RebuildError<V, E>>
+where
+    F: FnOnce(Vec<&str>) -> Result<(V, bool), E>,
+    E: Error + 'static,
+    V: Clone + Debug,
 {
     // TODO Check the actual error, and return an error if `docker tag`
     // returned an unexpected error.
@@ -166,37 +256,44 @@ fn rebuild(target_img: &str, cache_img: &str, args: Vec<&str>)
 
     // By default, Docker removes intermediate containers after a successful
     // build, but leaves them after a failed build. We use `--force-rm` to
-    // remove them even if the build failed.
+    // remove them even if the build failed. See "Container Removal" in
+    // `README.md` for more details.
     let mut build_args = vec!["build", tag_flag, "--force-rm"];
 
     build_args.extend(args);
 
-    let build_status =
-        stream_docker(build_args)
-            .context(BuildNewImageFailed)?;
+    let (build_result, build_success) = run_docker(build_args)
+        .context(BuildNewImageFailed)?;
 
     // We only attempt to remove or re-tag the cached image if the initial
     // tagging succeeded.
     if tag_result.status.success() {
-        if build_status.success() {
+        if build_success {
             assert_docker(&["rmi", cache_img])
-                .context(RemoveOldImageFailed{build_status})?;
+                .with_context(|| RemoveOldImageFailed{
+                    build_result: build_result.clone(),
+                })?;
         } else {
             assert_docker(&["tag", cache_img, target_img])
-                .context(UntagFailed{build_status})?;
+                .with_context(|| UntagFailed{
+                    build_result: build_result.clone(),
+                })?;
         }
     }
 
-    Ok(build_status)
+    Ok(build_result)
 }
 
 #[allow(clippy::enum_variant_names)]
 #[derive(Debug, Snafu)]
-enum RebuildError {
+enum RebuildError<T, E>
+where
+    E: Error + 'static
+{
     TagFailed{source: IoError},
-    BuildNewImageFailed{source: StreamDockerError},
-    UntagFailed{source: AssertDockerError, build_status: ExitStatus},
-    RemoveOldImageFailed{source: AssertDockerError, build_status: ExitStatus},
+    BuildNewImageFailed{source: E},
+    UntagFailed{source: AssertDockerError, build_result: T},
+    RemoveOldImageFailed{source: AssertDockerError, build_result: T},
 }
 
 fn assert_docker<I, S>(args: I) -> Result<Output, AssertDockerError>
@@ -226,7 +323,7 @@ enum AssertDockerError {
 // `stream_docker` runs a `docker` subcommand but passes the file descriptors
 // for the standard streams of the current process to the child, so all input
 // and output will be passed as if the subcommand was the current process.
-fn stream_docker<I, S>(args: I) -> Result<ExitStatus, StreamDockerError>
+fn stream_docker<I, S>(args: I) -> Result<ExitStatus, SpawnDockerError>
 where
     I: IntoIterator<Item = S>,
     S: AsRef<OsStr>,
@@ -246,7 +343,152 @@ where
 }
 
 #[derive(Debug, Snafu)]
-enum StreamDockerError {
+enum SpawnDockerError {
     SpawnFailed{source: IoError},
     WaitFailed{source: IoError},
+}
+
+
+
+#[derive(Debug, Deserialize)]
+struct DockConfig {
+    organisation: String,
+    project: String,
+    environments: HashMap<String, DockEnvironmentConfig>
+}
+
+#[derive(Debug, Deserialize)]
+struct DockEnvironmentConfig {
+}
+
+fn run(dock_config_path: &str, args: &ArgMatches) -> i32 {
+    let conf_reader =
+        match File::open(dock_config_path) {
+            Ok(v) => {
+                v
+            },
+            Err(e) => {
+                eprintln!("couldn't open `{}`: {}", dock_config_path, e);
+                return 1;
+            },
+        };
+
+    let conf: DockConfig =
+        match serde_yaml::from_reader(conf_reader) {
+            Ok(v) => {
+                v
+            },
+            Err(e) => {
+                eprintln!("couldn't parse `{}`: {}", dock_config_path, e);
+                return 1;
+            },
+        };
+
+    let env_name = args.value_of(ENV_FLAG).unwrap();
+    let cache_tag = args.value_of(CACHE_TAG_FLAG).unwrap();
+
+    let img_name = format!(
+        "{}/{}.{}",
+        conf.organisation,
+        conf.project,
+        env_name,
+    );
+
+    let cache_img = new_tagged_img_name(&img_name, cache_tag);
+
+    let target_img = new_tagged_img_name(&img_name, "latest");
+
+    // TODO Take this value from the `dock` file.
+    let context_path = ".";
+    let rebuild_result = rebuild_with_captured_output(
+        &target_img,
+        &cache_img,
+        vec![
+            context_path,
+            &format!("--file={}.Dockerfile", env_name),
+        ],
+    );
+    match rebuild_result {
+        Ok(Output{status, stdout, stderr}) => {
+            let exit_code =
+                // We ignore the status code returned "by the build
+                // step" because there isn't anything to distinguish it
+                // from a status code returned "by the run step".
+                if status.success() {
+                    0
+                } else {
+                    1
+                };
+
+            if exit_code != 0 {
+                let result = io::stdout()
+                    .lock()
+                    .write_all(&stdout);
+                if let Err(e) = result {
+                    eprintln!("couldn't write captured STDOUT: {}", e);
+                    return 1;
+                }
+
+                let result = io::stderr()
+                    .lock()
+                    .write_all(&stderr);
+                if let Err(e) = result {
+                    eprintln!("couldn't write captured STDERR: {}", e);
+                    return 1;
+                }
+
+                return 1;
+            }
+        },
+        Err(v) => {
+            eprintln!("{:?}", v);
+        },
+    }
+
+    let extra_run_args =
+        match args.values_of(DOCKER_ARGS_FLAG) {
+            Some(vs) => vs.collect(),
+            None => vec![],
+        };
+
+    let mut run_args = vec!["run", "--rm", &target_img];
+    run_args.extend(extra_run_args);
+
+    match stream_docker(run_args) {
+        Ok(exit_status) => {
+            exit_code_from_exit_status(exit_status)
+        },
+        Err(v) => {
+            eprintln!("{:?}", v);
+
+            1
+        },
+    }
+}
+
+fn new_tagged_img_name(img_name: &str, tag: &str) -> String {
+    format!("{}:{}", img_name, tag)
+}
+
+fn rebuild_with_captured_output(
+    target_img: &str,
+    cache_img: &str,
+    args: Vec<&str>,
+)
+    -> Result<Output, RebuildError<Output, IoError>>
+{
+    rebuild_img(
+        target_img,
+        cache_img,
+        args,
+        |build_args| {
+            let build_result =
+                Command::new("docker")
+                    .args(build_args)
+                    .output()?;
+            let success = build_result.status.success();
+
+            Ok((build_result, success))
+        },
+    )
 }

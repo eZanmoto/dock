@@ -10,6 +10,36 @@ const TEST_BASE_IMG: &str = env!("TEST_BASE_IMG");
 const IMAGE_NAME_ROOT: &str = env!("TEST_IMG_NAMESPACE");
 const TEST_DIR: &str = env!("TEST_DIR");
 
+pub fn assert_apply_with_dock_yaml(defn: &Definition) -> References {
+    let mut fs_state = defn.fs.clone();
+
+    let dock_yaml = &formatdoc!{
+        "
+            organisation: 'ezanmoto'
+            project: 'dock.test'
+
+            environments:
+                {test_name}: {{}}
+        ",
+        test_name = defn.name,
+    };
+
+    let dock_yaml_name = "dock.yaml";
+    let dock_yaml_exists = fs_state.contains_key(dock_yaml_name);
+    assert!(!dock_yaml_exists, "`defn.fs` contains `{}`", dock_yaml_name);
+
+    fs_state.insert(dock_yaml_name, dock_yaml);
+
+    assert_apply_with_dockerfile_name(
+        &format!("{}.Dockerfile", defn.name),
+        &Definition{
+            name: defn.name,
+            dockerfile_steps: defn.dockerfile_steps,
+            fs: &fs_state,
+        },
+    )
+}
+
 pub fn assert_apply(defn: &Definition) -> References {
     assert_apply_with_dockerfile_name("Dockerfile", &defn)
 }

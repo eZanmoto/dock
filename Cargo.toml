@@ -15,9 +15,12 @@ version = "0.2.0"
 
 [dependencies]
 clap = "=2.33.3"
+serde = { version = "=1.0.133", features = ["derive"] }
+serde_yaml = "=0.8.1"
 snafu = "=0.6.9"
 
 [dev-dependencies]
 assert_cmd = "=1.0.1"
 indoc = "=1.0.2"
 maplit = "=1.0.2"
+predicates = "=2.1.1"
