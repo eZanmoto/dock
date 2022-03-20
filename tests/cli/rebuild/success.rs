@@ -2,10 +2,11 @@
 // Use of this source code is governed by an MIT
 // licence that can be found in the LICENCE file.
 
-use std::process::Command;
 use std::str;
-use std::str::Lines;
 
+use crate::assert_run;
+use crate::docker;
+use crate::docker::build::DockerBuild;
 use crate::test_setup;
 use crate::test_setup::Definition;
 
@@ -32,7 +33,7 @@ fn rebuild_creates_image_if_none() {
         fs: &hashmap!{"test.txt" => test_name},
     });
     // (2)
-    assert_docker_rmi(&test.image_tagged_name);
+    docker::assert_remove_image(&test.image_tagged_name);
     let mut cmd = new_test_cmd(test.dir, &test.image_tagged_name);
 
     let cmd_result = cmd.assert();
@@ -40,44 +41,13 @@ fn rebuild_creates_image_if_none() {
     // (A) (B) (C)
     assert_docker_build(cmd_result, &test.image_tagged_name);
     // (D)
-    assert_cmd_stdout(
-        "docker",
-        &["image", "inspect", &test.image_tagged_name],
-    );
+    docker::assert_image_exists(&test.image_tagged_name);
     // (E)
     assert_match_docker_run_stdout(
         &test.image_tagged_name,
         &["cat", "test.txt"],
         test_name,
     );
-}
-
-fn assert_docker_rmi(image_tagged_name: &str) {
-    let mut cmd = Command::new("docker");
-    cmd.args(vec!["rmi", &image_tagged_name]);
-    cmd.env_clear();
-
-    let output = cmd.output()
-        .unwrap_or_else(|_| panic!(
-            "couldn't get output for `docker rmi {}`",
-            image_tagged_name,
-        ));
-
-    if output.status.success() {
-        return
-    }
-
-    let stderr = str::from_utf8(&output.stderr)
-        .unwrap_or_else(|_| panic!(
-            "couldn't decode stderr for `docker rmi {}`",
-            image_tagged_name,
-        ));
-
-    let allowable_stderr =
-        format!("Error: No such image: {}\n", image_tagged_name);
-    if stderr != allowable_stderr {
-        panic!("unexpected stderr: {:?}", output);
-    }
 }
 
 fn new_test_cmd(
@@ -99,27 +69,13 @@ fn assert_match_docker_run_stdout(
     exp_stdout: &str,
 ) {
     let args = [&["run", "--rm", img], run_args].concat();
-    let act_stdout = assert_cmd_stdout("docker", &args);
+    let act_stdout = assert_run::assert_run_stdout("docker", &args);
     assert_eq!(exp_stdout, act_stdout);
 }
 
-fn assert_cmd_stdout(prog: &str, args: &[&str]) -> String {
-    let mut cmd = AssertCommand::new(prog);
-    cmd.args(args);
-    cmd.env_clear();
-
-    let result = cmd.assert().code(0);
-    let stdout = &result.get_output().stdout;
-
-    str::from_utf8(&stdout)
-        .expect("couldn't decode STDOUT as UTF-8")
-        .to_string()
-}
-
-fn assert_docker_build(
-    cmd_result: AssertOutput,
-    img_tagged_name: &str,
-) -> DockerBuild {
+fn assert_docker_build(cmd_result: AssertOutput, img_name: &str)
+    -> DockerBuild
+{
     let cmd_result = cmd_result.code(0);
     let cmd_result = cmd_result.stderr("");
 
@@ -128,72 +84,8 @@ fn assert_docker_build(
     let stdout = str::from_utf8(stdout_bytes)
         .expect("couldn't decode STDOUT");
 
-    assert_parse_docker_build_stdout(&mut stdout.lines(), &img_tagged_name)
-}
-
-fn assert_parse_docker_build_stdout(stdout: &mut Lines, tagged_name: &str)
-    -> DockerBuild
-{
-    let mut line = stdout.next().unwrap();
-    let exp_line = "Sending build context to Docker daemon";
-    assert!(line.starts_with(exp_line), "unexpected prefix: {}", line);
-
-    let mut last_layer_id: Option<String> = None;
-    let mut layers = vec![];
-    loop {
-        line = stdout.next().unwrap();
-        if let Some(id) = last_layer_id {
-            if line.starts_with(&("Successfully built ".to_owned() + &id)) {
-                break;
-            }
-        }
-
-        assert!(line.starts_with("Step "), "unexpected prefix: {}", line);
-        line = stdout.next().unwrap();
-
-        if line.starts_with(" ---> Using cache") {
-            line = stdout.next().unwrap();
-        }
-
-        if line.starts_with(" ---> Running in ") {
-            line = stdout.next().unwrap();
-
-            while !line.starts_with(" ---> ") {
-                line = stdout.next().unwrap();
-            }
-        }
-
-        let layer_id = line.strip_prefix(" ---> ").unwrap().to_string();
-        last_layer_id = Some(layer_id.clone());
-        layers.push(DockerBuildLayer{id: layer_id});
-    }
-    line = stdout.next().unwrap();
-
-    assert_eq!(line, "Successfully tagged ".to_owned() + tagged_name);
-
-    assert_eq!(stdout.next(), None);
-
-    DockerBuild{layers}
-}
-
-#[derive(Debug)]
-struct DockerBuild {
-    layers: Vec<DockerBuildLayer>
-}
-
-impl DockerBuild {
-    fn img_id(&self) -> String {
-        self.layers
-            .last()
-            .unwrap()
-            .id
-            .clone()
-    }
-}
-
-#[derive(Debug)]
-struct DockerBuildLayer {
-    id: String,
+    DockerBuild::assert_parse_from_stdout(&mut stdout.lines(), &img_name)
+        .expect("couldn't parse Docker build STDOUT")
 }
 
 #[test]
@@ -260,7 +152,8 @@ fn rebuild_replaces_old_image() {
 }
 
 fn get_local_docker_image_ids() -> Vec<String> {
-    let stdout = assert_cmd_stdout("docker", &["images", "--quiet"]);
+    let args = &["images", "--quiet"];
+    let stdout = assert_run::assert_run_stdout("docker", args);
 
     stdout
         .split_ascii_whitespace()
@@ -315,7 +208,7 @@ fn file_argument() {
         },
     );
     // (2)
-    assert_docker_rmi(&test.image_tagged_name);
+    docker::assert_remove_image(&test.image_tagged_name);
     let mut cmd = new_test_cmd(test.dir, &test.image_tagged_name);
     cmd.arg("--file=test.Dockerfile");
 

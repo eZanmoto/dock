@@ -40,6 +40,29 @@ used for repeated rebuilds of Docker images, without leaving unused images and
 containers behind. As such, the default behaviour of `dock rebuild` is to always
 remove intermediate containers regardless of the build result.
 
+### `dock run`
+
+`dock run` runs a shell command in a Docker "environment". For example, consider
+the following definition of a project whose build environment is defined in a
+separate `build.Dockerfile`, and which also has the following `dock.yaml:
+
+``` yaml
+organisation: 'ezanmoto'
+project: 'dock'
+
+environments:
+    build: {}
+```
+
+Running `dock run build make` will do the following, in order:
+
+1. Rebuilds the Docker image `ezanmoto/dock.build` from a local
+   `build.Dockerfile`, if it needs to be rebuilt.
+2. Runs `make` in a new container created from `ezanmoto/dock.build`.
+
+The container is run with `--rm`, so it is automatically removed after the
+command finishes.
+
 Development
 -----------
 
