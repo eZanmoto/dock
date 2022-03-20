@@ -68,10 +68,10 @@ Development
 
 ### Build environment
 
-The build environment for the project is defined in `scripts/build.Dockerfile`.
-The build environment can be replicated locally by following the setup defined
-in the Dockerfile, or Docker can be used to mount the local directory in the
-build environment by running the following:
+The build environment for the project is defined in `build.Dockerfile`. The
+build environment can be replicated locally by following the setup defined in
+the Dockerfile, or Docker can be used to mount the local directory in the build
+environment by running the following:
 
     bash scripts/with_build_env.sh bash
 
@@ -84,8 +84,8 @@ Docker by running the following:
 
 ### Testing
 
-The project can be tested locally using `make check`, or can be built using
-Docker by running the following:
+The project can be tested locally using `make check`, or the tests can be run
+using Docker by running the following:
 
     bash scripts/with_build_env.sh make check
 
