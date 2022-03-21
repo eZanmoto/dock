@@ -15,6 +15,7 @@ use std::process;
 use std::process::Command;
 use std::process::ExitStatus;
 use std::process::Output;
+use std::process::Stdio;
 
 extern crate clap;
 extern crate serde;
@@ -398,15 +399,24 @@ fn run(dock_config_path: &str, args: &ArgMatches) -> i32 {
 
     let target_img = new_tagged_img_name(&img_name, "latest");
 
+    let dockerfile =
+        match File::open(format!("{}.Dockerfile", env_name)) {
+            Ok(f) => {
+                f
+            },
+            Err(e) => {
+                eprintln!("couldn't open '{}.Dockerfile': {:?}", env_name, e);
+                return 1;
+            },
+        };
+
     // TODO Take this value from the `dock` file.
-    let context_path = ".";
+    let context_path = "-";
     let rebuild_result = rebuild_with_captured_output(
         &target_img,
         &cache_img,
-        vec![
-            context_path,
-            &format!("--file={}.Dockerfile", env_name),
-        ],
+        dockerfile,
+        vec![context_path],
     );
     match rebuild_result {
         Ok(Output{status, stdout, stderr}) => {
@@ -473,22 +483,52 @@ fn new_tagged_img_name(img_name: &str, tag: &str) -> String {
 fn rebuild_with_captured_output(
     target_img: &str,
     cache_img: &str,
+    mut dockerfile: File,
     args: Vec<&str>,
 )
-    -> Result<Output, RebuildError<Output, IoError>>
+    -> Result<Output, RebuildError<Output, RebuildWithCapturedOutputError>>
 {
     rebuild_img(
         target_img,
         cache_img,
         args,
         |build_args| {
-            let build_result =
+            let mut docker_proc =
                 Command::new("docker")
                     .args(build_args)
-                    .output()?;
+                    .stdout(Stdio::piped())
+                    .stderr(Stdio::piped())
+                    .stdin(Stdio::piped())
+                    .spawn()
+                    .context(PipedSpawnFailed)?;
+
+            // TODO `docker_proc.wait_with_output()` blocks if this block
+            // doesn't surround the usage of `stdin`. This is likely due to
+            // `stdin.take()` causing the child to be blocked on input, which
+            // the new block explicitly drops, though this behaviour should be
+            // confirmed and documented when time allows.
+            {
+                let mut stdin = docker_proc.stdin.take()
+                    .expect("`docker` process didn't contain a `stdin` pipe");
+
+                io::copy(&mut dockerfile, &mut stdin)
+                    .context(PipeDockerfileFailed)?;
+            }
+
+            let build_result = docker_proc.wait_with_output()
+                .context(PipedWaitFailed)?;
+
             let success = build_result.status.success();
 
             Ok((build_result, success))
         },
     )
+}
+
+#[allow(clippy::enum_variant_names)]
+#[derive(Debug, Snafu)]
+enum RebuildWithCapturedOutputError {
+    PipedSpawnFailed{source: IoError},
+    PipeDockerfileFailed{source: IoError},
+    PipedWaitFailed{source: IoError},
 }
