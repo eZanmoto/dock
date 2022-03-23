@@ -24,7 +24,7 @@ use crate::predicates::prelude::predicate;
 fn run_with_build_failure() {
     // (1)
     let test_name = "run_with_build_failure";
-    let test = test_setup::assert_apply_with_dock_yaml(&Definition{
+    let test = test_setup::assert_apply_with_empty_dock_yaml(&Definition{
         name: test_name,
         dockerfile_steps: indoc!{"
             RUN exit 2
@@ -72,7 +72,7 @@ fn new_str_from_cmd_stdout(cmd_result: &Assert) -> &str {
 fn run_with_run_failure() {
     // (1)
     let test_name = "run_with_run_failure";
-    let test = test_setup::assert_apply_with_dock_yaml(&Definition{
+    let test = test_setup::assert_apply_with_empty_dock_yaml(&Definition{
         name: test_name,
         dockerfile_steps: "",
         fs: &hashmap!{},

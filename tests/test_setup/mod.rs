@@ -10,7 +10,14 @@ const TEST_BASE_IMG: &str = env!("TEST_BASE_IMG");
 const IMAGE_NAME_ROOT: &str = env!("TEST_IMG_NAMESPACE");
 const TEST_DIR: &str = env!("TEST_DIR");
 
-pub fn assert_apply_with_dock_yaml(defn: &Definition) -> References {
+pub fn assert_apply_with_empty_dock_yaml(defn: &Definition) -> References {
+    assert_apply_with_dock_yaml("{}", defn)
+}
+
+pub fn assert_apply_with_dock_yaml(
+    env_defn: &str,
+    defn: &Definition,
+) -> References {
     let mut fs_state = defn.fs.clone();
 
     let dock_yaml = &formatdoc!{
@@ -19,9 +26,11 @@ pub fn assert_apply_with_dock_yaml(defn: &Definition) -> References {
             project: 'dock.test'
 
             environments:
-                {test_name}: {{}}
+                {test_name}:
+                    {env_defn}
         ",
         test_name = defn.name,
+        env_defn = env_defn,
     };
 
     let dock_yaml_name = "dock.yaml";

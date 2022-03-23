@@ -360,6 +360,7 @@ struct DockConfig {
 
 #[derive(Debug, Deserialize)]
 struct DockEnvironmentConfig {
+    context: Option<String>
 }
 
 fn run(dock_config_path: &str, args: &ArgMatches) -> i32 {
@@ -388,6 +389,14 @@ fn run(dock_config_path: &str, args: &ArgMatches) -> i32 {
     let env_name = args.value_of(ENV_FLAG).unwrap();
     let cache_tag = args.value_of(CACHE_TAG_FLAG).unwrap();
 
+    let env =
+        if let Some(env) = conf.environments.get(env_name) {
+            env
+        } else {
+            eprintln!("environment '{}' isn't defined", env_name);
+            return 1;
+        };
+
     let img_name = format!(
         "{}/{}.{}",
         conf.organisation,
@@ -399,60 +408,37 @@ fn run(dock_config_path: &str, args: &ArgMatches) -> i32 {
 
     let target_img = new_tagged_img_name(&img_name, "latest");
 
-    let dockerfile =
-        match File::open(format!("{}.Dockerfile", env_name)) {
-            Ok(f) => {
-                f
-            },
-            Err(e) => {
-                eprintln!("couldn't open '{}.Dockerfile': {:?}", env_name, e);
-                return 1;
-            },
-        };
+    let file_arg = format!("--file={}.Dockerfile", env_name);
+    let mut build_args = vec!["-"];
+    let mut dockerfile = None;
+    if let Some(c) = &env.context {
+        // FIXME The context path should be defined relative to `dock.yaml`.
+        build_args = vec![&file_arg, &c];
+    } else {
+        dockerfile =
+            match File::open(format!("{}.Dockerfile", env_name)) {
+                Ok(f) => {
+                    Some(f)
+                },
+                Err(e) => {
+                    eprintln!(
+                        "couldn't open '{}.Dockerfile': {:?}",
+                        env_name,
+                        e,
+                    );
+                    return 1;
+                },
+            };
+    }
 
-    // TODO Take this value from the `dock` file.
-    let context_path = "-";
     let rebuild_result = rebuild_with_captured_output(
         &target_img,
         &cache_img,
         dockerfile,
-        vec![context_path],
+        build_args,
     );
-    match rebuild_result {
-        Ok(Output{status, stdout, stderr}) => {
-            let exit_code =
-                // We ignore the status code returned "by the build
-                // step" because there isn't anything to distinguish it
-                // from a status code returned "by the run step".
-                if status.success() {
-                    0
-                } else {
-                    1
-                };
-
-            if exit_code != 0 {
-                let result = io::stdout()
-                    .lock()
-                    .write_all(&stdout);
-                if let Err(e) = result {
-                    eprintln!("couldn't write captured STDOUT: {}", e);
-                    return 1;
-                }
-
-                let result = io::stderr()
-                    .lock()
-                    .write_all(&stderr);
-                if let Err(e) = result {
-                    eprintln!("couldn't write captured STDERR: {}", e);
-                    return 1;
-                }
-
-                return 1;
-            }
-        },
-        Err(v) => {
-            eprintln!("{:?}", v);
-        },
+    if !handle_run_rebuild_result(rebuild_result) {
+        return 1;
     }
 
     let extra_run_args =
@@ -483,7 +469,7 @@ fn new_tagged_img_name(img_name: &str, tag: &str) -> String {
 fn rebuild_with_captured_output(
     target_img: &str,
     cache_img: &str,
-    mut dockerfile: File,
+    dockerfile: Option<File>,
     args: Vec<&str>,
 )
     -> Result<Output, RebuildError<Output, RebuildWithCapturedOutputError>>
@@ -493,21 +479,29 @@ fn rebuild_with_captured_output(
         cache_img,
         args,
         |build_args| {
+            let stdin_behaviour =
+                if dockerfile.is_some() {
+                    Stdio::piped()
+                } else {
+                    Stdio::null()
+                };
+
             let mut docker_proc =
                 Command::new("docker")
                     .args(build_args)
                     .stdout(Stdio::piped())
                     .stderr(Stdio::piped())
-                    .stdin(Stdio::piped())
+                    .stdin(stdin_behaviour)
                     .spawn()
                     .context(PipedSpawnFailed)?;
 
-            // TODO `docker_proc.wait_with_output()` blocks if this block
-            // doesn't surround the usage of `stdin`. This is likely due to
-            // `stdin.take()` causing the child to be blocked on input, which
-            // the new block explicitly drops, though this behaviour should be
-            // confirmed and documented when time allows.
-            {
+            if let Some(mut dockerfile) = dockerfile {
+                // TODO `docker_proc.wait_with_output()` blocks if this block
+                // doesn't surround the usage of `stdin`. This is likely due to
+                // `stdin.take()` causing the child to be blocked on input,
+                // which the new block explicitly drops, though this behaviour
+                // should be confirmed and documented when time allows.
+
                 let mut stdin = docker_proc.stdin.take()
                     .expect("`docker` process didn't contain a `stdin` pipe");
 
@@ -531,4 +525,40 @@ enum RebuildWithCapturedOutputError {
     PipedSpawnFailed{source: IoError},
     PipeDockerfileFailed{source: IoError},
     PipedWaitFailed{source: IoError},
+}
+
+// `handle_run_rebuild_result` returns `true` if `r` indicates a successful
+// rebuild, and returns `false` otherwise.
+fn handle_run_rebuild_result(
+    r: Result<Output, RebuildError<Output, RebuildWithCapturedOutputError>>,
+) -> bool {
+    match r {
+        Ok(Output{status, stdout, stderr}) => {
+            // We ignore the status code returned "by the build step" because
+            // there isn't anything to distinguish it from a status code
+            // returned "by the run step".
+            if status.success() {
+                return true;
+            }
+
+            let result = io::stdout()
+                .lock()
+                .write_all(&stdout);
+            if let Err(e) = result {
+                eprintln!("couldn't write captured STDOUT: {}", e);
+            }
+
+            let result = io::stderr()
+                .lock()
+                .write_all(&stderr);
+            if let Err(e) = result {
+                eprintln!("couldn't write captured STDERR: {}", e);
+            }
+        },
+        Err(v) => {
+            eprintln!("{:?}", v);
+        },
+    }
+
+    false
 }

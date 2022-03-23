@@ -22,7 +22,7 @@ use crate::assert_cmd::Command as AssertCommand;
 fn run_creates_image_if_none() {
     // (1)
     let test_name = "run_creates_image_if_none";
-    let test = test_setup::assert_apply_with_dock_yaml(&Definition{
+    let test = test_setup::assert_apply_with_empty_dock_yaml(&Definition{
         name: test_name,
         dockerfile_steps: "",
         fs: &hashmap!{},
@@ -66,7 +66,7 @@ pub fn run_test_cmd(root_test_dir: String, args: &[&str]) -> Assert {
 fn run_uses_correct_image() {
     // (1) (2)
     let test_name = "run_uses_correct_image";
-    let test = test_setup::assert_apply_with_dock_yaml(&Definition{
+    let test = test_setup::assert_apply_with_empty_dock_yaml(&Definition{
         name: test_name,
         dockerfile_steps: &formatdoc!{
             "
@@ -103,7 +103,7 @@ fn run_uses_correct_image() {
 fn run_returns_correct_exit_code() {
     // (1)
     let test_name = "run_returns_correct_exit_code";
-    let test = test_setup::assert_apply_with_dock_yaml(&Definition{
+    let test = test_setup::assert_apply_with_empty_dock_yaml(&Definition{
         name: test_name,
         dockerfile_steps: "",
         fs: &hashmap!{},
@@ -125,4 +125,45 @@ fn run_returns_correct_exit_code() {
     docker::assert_image_exists(&test.image_tagged_name);
     // (E)
     docker::assert_no_containers_from_image(&test.image_tagged_name);
+}
+
+#[test]
+// Given (1) the dock file defines an empty environment called `<env>`
+//     AND (2) `<env>`'s Dockerfile copies `test.txt`
+// When `run <env> cat test.txt` is run
+// Then (A) the command is successful
+//     AND (B) the command STDERR is empty
+//     AND (C) the command STDOUT contains the contents of `test.txt`
+//     AND (D) the target image exists
+fn build_with_project_directory_as_context() {
+    // (1) (2)
+    let test_name = "build_with_project_directory_as_context";
+    let test = test_setup::assert_apply_with_dock_yaml(
+        indoc!{"
+            context: .
+        "},
+        &Definition{
+            name: test_name,
+            dockerfile_steps: indoc!{"
+                COPY test.txt /
+            "},
+            fs: &hashmap!{
+                "test.txt" => test_name,
+            },
+        },
+    );
+    // (3)
+    docker::assert_remove_image(&test.image_tagged_name);
+
+    let cmd_result = run_test_cmd(test.dir, &[test_name, "cat", "test.txt"]);
+
+    cmd_result
+        // (A)
+        .code(0)
+        // (B)
+        .stderr("")
+        // (C)
+        .stdout(test_name);
+    // (D)
+    docker::assert_image_exists(&test.image_tagged_name);
 }
