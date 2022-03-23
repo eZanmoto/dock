@@ -38,9 +38,16 @@ pub fn assert_remove_image(image_tagged_name: &str) {
 }
 
 pub fn assert_image_exists(image_tagged_name: &str) {
-    let args = &["image", "inspect", &image_tagged_name];
+    assert!(image_exists(image_tagged_name));
+}
 
-    assert_run::assert_run_stdout("docker", args);
+pub fn image_exists(image_tagged_name: &str) -> bool {
+    assert_get_local_image_tagged_names()
+        .contains(&image_tagged_name.to_owned())
+}
+
+pub fn assert_image_doesnt_exist(image_tagged_name: &str) {
+    assert!(!image_exists(image_tagged_name));
 }
 
 // `assert_get_local_image_tagged_names` returns a `Vec` of the tagged image
