@@ -22,8 +22,8 @@ use crate::predicates::prelude::predicate;
 //     AND (C) the command STDOUT contains the `docker build` STDOUT
 //     AND (D) the target image doesn't exist
 fn run_with_build_failure() {
-    // (1)
     let test_name = "run_with_build_failure";
+    // (1)
     let test = test_setup::assert_apply_with_empty_dock_yaml(&Definition{
         name: test_name,
         dockerfile_steps: indoc!{"
@@ -70,8 +70,8 @@ fn new_str_from_cmd_stdout(cmd_result: &Assert) -> &str {
 //     AND (D) the target image exists
 //     AND (E) no containers exist for the target image
 fn run_with_run_failure() {
-    // (1)
     let test_name = "run_with_run_failure";
+    // (1)
     let test = test_setup::assert_apply_with_empty_dock_yaml(&Definition{
         name: test_name,
         dockerfile_steps: "",
