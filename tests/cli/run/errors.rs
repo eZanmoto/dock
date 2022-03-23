@@ -157,3 +157,129 @@ fn predicate_match(s: &str) -> RegexPredicate {
             e,
         ))
 }
+
+#[test]
+// Given (1) the dock file defines an environment called `<env>`
+//     AND (2) the `<env>` context path starts with `..`
+// When `run <env> true` is run
+// Then (A) the command returns an exit code of 1
+//     AND (B) the command STDERR indicates the invalid path
+//     AND (B) the command STDOUT is empty
+//     AND (D) the target image doesn't exist
+//     AND (E) no containers exist for the target image
+fn context_starts_with_path_traversal() {
+    let test_name = "context_starts_with_path_traversal";
+    // (1)
+    let test = test_setup::assert_apply_with_dock_yaml(
+        // (2)
+        indoc!{"
+            context: ../dir
+        "},
+        &Definition{
+            name: test_name,
+            fs: &hashmap!{},
+            dockerfile_steps: indoc!{""},
+        },
+    );
+    docker::assert_remove_image(&test.image_tagged_name);
+
+    let cmd_result = success::run_test_cmd(test.dir, &[test_name, "true"]);
+
+    cmd_result
+        // (A)
+        .code(1)
+        // (B)
+        .stderr(predicate_str::starts_with(
+            "context path can't contain traversal",
+        ))
+        // (C)
+        .stdout("");
+    // (D)
+    docker::assert_image_doesnt_exist(&test.image_tagged_name);
+    // (E)
+    docker::assert_no_containers_from_image(&test.image_tagged_name);
+}
+
+#[test]
+// Given (1) the dock file defines an environment called `<env>`
+//     AND (2) the `<env>` context path contains a `..` component
+// When `run <env> true` is run
+// Then (A) the command returns an exit code of 1
+//     AND (B) the command STDERR indicates the invalid path
+//     AND (B) the command STDOUT is empty
+//     AND (D) the target image doesn't exist
+//     AND (E) no containers exist for the target image
+fn context_contains_path_traversal() {
+    let test_name = "context_contains_path_traversal";
+    // (1)
+    let test = test_setup::assert_apply_with_dock_yaml(
+        // (2)
+        indoc!{"
+            context: dir/../dir
+        "},
+        &Definition{
+            name: test_name,
+            fs: &hashmap!{},
+            dockerfile_steps: indoc!{""},
+        },
+    );
+    docker::assert_remove_image(&test.image_tagged_name);
+
+    let cmd_result = success::run_test_cmd(test.dir, &[test_name, "true"]);
+
+    cmd_result
+        // (A)
+        .code(1)
+        // (B)
+        .stderr(predicate_str::starts_with(
+            "context path can't contain traversal",
+        ))
+        // (C)
+        .stdout("");
+    // (D)
+    docker::assert_image_doesnt_exist(&test.image_tagged_name);
+    // (E)
+    docker::assert_no_containers_from_image(&test.image_tagged_name);
+}
+
+#[test]
+// Given (1) the dock file defines an environment called `<env>`
+//     AND (2) the `<env>` context path starts with `/`
+// When `run <env> true` is run
+// Then (A) the command returns an exit code of 1
+//     AND (B) the command STDERR indicates the invalid path
+//     AND (B) the command STDOUT is empty
+//     AND (D) the target image doesn't exist
+//     AND (E) no containers exist for the target image
+fn context_contains_absolute_path() {
+    let test_name = "context_contains_path_traversal";
+    // (1)
+    let test = test_setup::assert_apply_with_dock_yaml(
+        // (2)
+        indoc!{"
+            context: /dir
+        "},
+        &Definition{
+            name: test_name,
+            fs: &hashmap!{},
+            dockerfile_steps: indoc!{""},
+        },
+    );
+    docker::assert_remove_image(&test.image_tagged_name);
+
+    let cmd_result = success::run_test_cmd(test.dir, &[test_name, "true"]);
+
+    cmd_result
+        // (A)
+        .code(1)
+        // (B)
+        .stderr(predicate_str::starts_with(
+            "context path can't contain traversal",
+        ))
+        // (C)
+        .stdout("");
+    // (D)
+    docker::assert_image_doesnt_exist(&test.image_tagged_name);
+    // (E)
+    docker::assert_no_containers_from_image(&test.image_tagged_name);
+}

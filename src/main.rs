@@ -11,6 +11,8 @@ use std::fs::File;
 use std::io;
 use std::io::Error as IoError;
 use std::io::Write;
+use std::path::Component;
+use std::path::Path;
 use std::process;
 use std::process::Command;
 use std::process::ExitStatus;
@@ -408,24 +410,27 @@ fn run(dock_config_path: &str, args: &ArgMatches) -> i32 {
 
     let target_img = new_tagged_img_name(&img_name, "latest");
 
-    let file_arg = format!("--file={}.Dockerfile", env_name);
+    let dfile_name = format!("{}.Dockerfile", env_name);
+    let file_arg = format!("--file={}", dfile_name);
     let mut build_args = vec!["-"];
     let mut dockerfile = None;
     if let Some(c) = &env.context {
         // FIXME The context path should be defined relative to `dock.yaml`.
+
+        if path_contains_invalid_component(Path::new(c)) {
+            eprintln!("context path can't contain traversal (e.g. `..`)");
+            return 1;
+        }
+
         build_args = vec![&file_arg, &c];
     } else {
         dockerfile =
-            match File::open(format!("{}.Dockerfile", env_name)) {
+            match File::open(&dfile_name) {
                 Ok(f) => {
                     Some(f)
                 },
                 Err(e) => {
-                    eprintln!(
-                        "couldn't open '{}.Dockerfile': {:?}",
-                        env_name,
-                        e,
-                    );
+                    eprintln!("couldn't open '{}': {:?}", dfile_name, e);
                     return 1;
                 },
             };
@@ -558,6 +563,19 @@ fn handle_run_rebuild_result(
         Err(v) => {
             eprintln!("{:?}", v);
         },
+    }
+
+    false
+}
+
+// TODO Consider returning the invalid component to support clearer error
+// messages.
+fn path_contains_invalid_component(p: &Path) -> bool {
+    for c in p.components() {
+        match c {
+            Component::Normal(_) | Component::CurDir => {},
+            _ => return true,
+        }
     }
 
     false
