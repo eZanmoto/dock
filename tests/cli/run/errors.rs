@@ -104,7 +104,7 @@ fn run_with_run_failure() {
 //     AND (2) `<env>` uses the directory `dir` as the context
 //     AND (3) `dir` doesn't contain `test.txt`
 //     AND (4) `<env>`'s Dockerfile copies `test.txt`
-// When `run <env> cat test.txt` is run
+// When `run <env> true` is run
 // Then (A) the command returns an exit code of 1
 //     AND (B) the command STDERR indicates that the copy failed
 //     AND (C) the target image doesn't exist
@@ -130,11 +130,9 @@ fn build_with_file_outside_context_directory() {
             "},
         },
     );
-    // (3)
     docker::assert_remove_image(&test.image_tagged_name);
 
-    let cmd_result =
-        success::run_test_cmd(test.dir, &[test_name, "cat", "test.txt"]);
+    let cmd_result = success::run_test_cmd(test.dir, &[test_name, "true"]);
 
     cmd_result
         // (A)
