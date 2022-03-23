@@ -167,3 +167,44 @@ fn build_with_project_directory_as_context() {
     // (D)
     docker::assert_image_exists(&test.image_tagged_name);
 }
+
+#[test]
+// Given (1) the dock file defines an empty environment called `<env>`
+//     AND (2) `<env>`'s Dockerfile copies `test.txt`
+// When `run <env> cat test.txt` is run
+// Then (A) the command is successful
+//     AND (B) the command STDERR is empty
+//     AND (C) the command STDOUT contains the contents of `test.txt`
+//     AND (D) the target image exists
+fn build_with_nested_directory_as_context() {
+    // (1) (2)
+    let test_name = "build_with_nested_directory_as_context";
+    let test = test_setup::assert_apply_with_dock_yaml(
+        indoc!{"
+            context: dir
+        "},
+        &Definition{
+            name: test_name,
+            dockerfile_steps: indoc!{"
+                COPY test.txt /
+            "},
+            fs: &hashmap!{
+                "dir/test.txt" => test_name,
+            },
+        },
+    );
+    // (3)
+    docker::assert_remove_image(&test.image_tagged_name);
+
+    let cmd_result = run_test_cmd(test.dir, &[test_name, "cat", "test.txt"]);
+
+    cmd_result
+        // (A)
+        .code(0)
+        // (B)
+        .stderr("")
+        // (C)
+        .stdout(test_name);
+    // (D)
+    docker::assert_image_exists(&test.image_tagged_name);
+}
