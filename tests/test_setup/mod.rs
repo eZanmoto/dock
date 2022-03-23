@@ -116,7 +116,11 @@ pub fn assert_create_dir(dir: String, name: &str) -> String {
     let path = dir + "/" + name;
 
     fs::create_dir(&path)
-        .unwrap_or_else(|_| panic!("couldn't create directory: {}", path));
+        .unwrap_or_else(|e| panic!(
+            "couldn't create directory: {}: {}",
+            path,
+            e,
+        ));
 
     path
 }
@@ -128,16 +132,18 @@ fn assert_write_fs_state(root_dir: &str, fs_state: &HashMap<&str, &str>) {
 
         if let Some(dir) = test_file.parent() {
             fs::create_dir_all(dir)
-                .unwrap_or_else(|_| panic!(
-                    "couldn't create test directory '{}'",
+                .unwrap_or_else(|e| panic!(
+                    "couldn't create test directory '{}': {}",
                     dir.display(),
+                    e,
                 ));
         }
 
         fs::write(test_file, fconts)
-            .unwrap_or_else(|_| panic!(
-                "couldn't write test file '{}'",
+            .unwrap_or_else(|e| panic!(
+                "couldn't write test file '{}': {}",
                 test_file.display(),
+                e,
             ));
     }
 }
