@@ -250,7 +250,7 @@ fn context_contains_path_traversal() {
 //     AND (D) the target image doesn't exist
 //     AND (E) no containers exist for the target image
 fn context_contains_absolute_path() {
-    let test_name = "context_contains_path_traversal";
+    let test_name = "context_contains_absolute_path";
     // (1)
     let test = test_setup::assert_apply_with_dock_yaml(
         // (2)
