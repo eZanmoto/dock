@@ -30,6 +30,7 @@ use serde::Deserialize;
 use snafu::ResultExt;
 use snafu::Snafu;
 
+mod docker;
 mod rebuild;
 
 use rebuild::RebuildError;
@@ -311,7 +312,7 @@ fn run(dock_file_name: &str, args: &ArgMatches) -> i32 {
     let mut run_args = vec!["run", "--rm", &target_img];
     run_args.extend(extra_run_args);
 
-    match rebuild::stream_docker(run_args) {
+    match docker::stream_run(run_args) {
         Ok(exit_status) => {
             exit_code_from_exit_status(exit_status)
         },

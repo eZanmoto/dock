@@ -3,7 +3,6 @@
 // licence that can be found in the LICENCE file.
 
 use std::error::Error;
-use std::ffi::OsStr;
 use std::fmt::Debug;
 use std::fs::File;
 use std::io;
@@ -16,19 +15,23 @@ use std::process::Stdio;
 use snafu::ResultExt;
 use snafu::Snafu;
 
+use docker;
+use docker::AssertRunError;
+use docker::StreamRunError;
+
 pub fn rebuild_with_streaming_output(
     target_img: &str,
     cache_img: &str,
     args: Vec<&str>,
 )
-    -> Result<ExitStatus, RebuildError<ExitStatus, SpawnDockerError>>
+    -> Result<ExitStatus, RebuildError<ExitStatus, StreamRunError>>
 {
     rebuild_img(
         target_img,
         cache_img,
         args,
         |build_args| {
-            let build_result = stream_docker(build_args)?;
+            let build_result = docker::stream_run(build_args)?;
 
             Ok((build_result, build_result.success()))
         },
@@ -72,12 +75,12 @@ where
     // tagging succeeded.
     if tag_result.status.success() {
         if build_success {
-            assert_docker(&["rmi", cache_img])
+            docker::assert_run(&["rmi", cache_img])
                 .with_context(|| RemoveOldImageFailed{
                     build_result: build_result.clone(),
                 })?;
         } else {
-            assert_docker(&["tag", cache_img, target_img])
+            docker::assert_run(&["tag", cache_img, target_img])
                 .with_context(|| UntagFailed{
                     build_result: build_result.clone(),
                 })?;
@@ -95,60 +98,8 @@ where
 {
     TagFailed{source: IoError},
     BuildNewImageFailed{source: E},
-    UntagFailed{source: AssertDockerError, build_result: T},
-    RemoveOldImageFailed{source: AssertDockerError, build_result: T},
-}
-
-fn assert_docker<I, S>(args: I) -> Result<Output, AssertDockerError>
-where
-    I: IntoIterator<Item = S>,
-    S: AsRef<OsStr>,
-{
-    let output =
-        Command::new("docker")
-            .args(args)
-            .output()
-            .context(RunFailed)?;
-
-    if !output.status.success() {
-        return Err(AssertDockerError::NonZeroExit{output});
-    }
-
-    Ok(output)
-}
-
-#[derive(Debug, Snafu)]
-pub enum AssertDockerError {
-    RunFailed{source: IoError},
-    NonZeroExit{output: Output},
-}
-
-// `stream_docker` runs a `docker` subcommand but passes the file descriptors
-// for the standard streams of the current process to the child, so all input
-// and output will be passed as if the subcommand was the current process.
-pub fn stream_docker<I, S>(args: I) -> Result<ExitStatus, SpawnDockerError>
-where
-    I: IntoIterator<Item = S>,
-    S: AsRef<OsStr>,
-{
-    // The process spawned by `Command` inherits the standard file descriptors
-    // from the parent process by default.
-    let mut child =
-        Command::new("docker")
-            .args(args)
-            .spawn()
-            .context(SpawnFailed)?;
-
-    let status = child.wait()
-        .context(WaitFailed)?;
-
-    Ok(status)
-}
-
-#[derive(Debug, Snafu)]
-pub enum SpawnDockerError {
-    SpawnFailed{source: IoError},
-    WaitFailed{source: IoError},
+    UntagFailed{source: AssertRunError, build_result: T},
+    RemoveOldImageFailed{source: AssertRunError, build_result: T},
 }
 
 pub fn rebuild_with_captured_output(
