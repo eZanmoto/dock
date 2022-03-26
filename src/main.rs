@@ -8,7 +8,6 @@ use std::fmt::Debug;
 use std::fs::File;
 use std::io;
 use std::io::Error as IoError;
-use std::io::ErrorKind;
 use std::io::Write;
 use std::path::Component;
 use std::path::Path;
@@ -31,6 +30,7 @@ use snafu::ResultExt;
 use snafu::Snafu;
 
 mod docker;
+mod fs;
 mod rebuild;
 
 use rebuild::RebuildError;
@@ -245,7 +245,7 @@ fn run(dock_file_name: &str, args: &ArgMatches) -> i32 {
         };
 
     let (dock_dir, conf_reader) =
-        match find_and_open_file(&cwd, dock_file_name) {
+        match fs::find_and_open_file(&cwd, dock_file_name) {
             Ok(maybe_v) => {
                 if let Some(v) = maybe_v {
                     v
@@ -491,48 +491,4 @@ fn path_contains_invalid_component(p: &Path) -> bool {
     }
 
     false
-}
-
-// `read_deps_file` reads the file named `file_name` in `start` or the deepest
-// of `start`s ancestor directories that contains a file named `file_name`.
-fn find_and_open_file(start: &Path, file_name: &str)
-    -> Result<Option<(PathBuf, File)>, FindAndOpenFileError>
-{
-    let mut cur_dir = start.to_path_buf();
-    loop {
-        let path = cur_dir.clone().join(file_name);
-
-        let maybe_conts = try_open(&path)
-            .context(ReadFailed{path})?;
-
-        if let Some(conts) = maybe_conts {
-            return Ok(Some((cur_dir, conts)));
-        }
-
-        if !cur_dir.pop() {
-            return Ok(None);
-        }
-    }
-}
-
-#[derive(Debug, Snafu)]
-pub enum FindAndOpenFileError {
-    ReadFailed{source: IoError, path: PathBuf},
-}
-
-// `try_open` returns `path` opened in read-only mode, or `None` if it doesn't
-// exist, or an error if one occurred.
-fn try_open<P: AsRef<Path>>(path: P) -> Result<Option<File>, IoError> {
-    match File::open(path) {
-        Ok(conts) => {
-            Ok(Some(conts))
-        },
-        Err(err) => {
-            if err.kind() == ErrorKind::NotFound {
-                Ok(None)
-            } else {
-                Err(err)
-            }
-        },
-    }
 }
