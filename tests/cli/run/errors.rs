@@ -187,9 +187,7 @@ fn context_starts_with_path_traversal() {
         // (A)
         .code(1)
         // (B)
-        .stderr(predicate_str::starts_with(
-            "context path can't contain traversal",
-        ))
+        .stderr("context path must be relative, and can't contain traversal\n")
         // (C)
         .stdout("");
     // (D)
@@ -229,9 +227,7 @@ fn context_contains_path_traversal() {
         // (A)
         .code(1)
         // (B)
-        .stderr(predicate_str::starts_with(
-            "context path can't contain traversal",
-        ))
+        .stderr("context path must be relative, and can't contain traversal\n")
         // (C)
         .stdout("");
     // (D)
@@ -271,9 +267,7 @@ fn context_contains_absolute_path() {
         // (A)
         .code(1)
         // (B)
-        .stderr(predicate_str::starts_with(
-            "context path can't contain traversal",
-        ))
+        .stderr("context path must be relative, and can't contain traversal\n")
         // (C)
         .stdout("");
     // (D)

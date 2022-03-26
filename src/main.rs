@@ -10,9 +10,11 @@ use std::fmt::Debug;
 use std::fs::File;
 use std::io;
 use std::io::Error as IoError;
+use std::io::ErrorKind;
 use std::io::Write;
 use std::path::Component;
 use std::path::Path;
+use std::path::PathBuf;
 use std::process;
 use std::process::Command;
 use std::process::ExitStatus;
@@ -41,10 +43,10 @@ fn main() {
     let rebuild_about: &str =
         &"Replace a tagged Docker image with a new build".to_string();
 
-    let dock_config_path = "dock.yaml";
+    let dock_file_name = "dock.yaml";
     let run_about: &str = &format!(
         "Run a command in an environment defined in `{}`",
-        dock_config_path,
+        dock_file_name,
     );
 
     let args =
@@ -130,7 +132,7 @@ fn main() {
             process::exit(exit_code);
         },
         ("run", Some(sub_args)) => {
-            let exit_code = run(dock_config_path, sub_args);
+            let exit_code = run(dock_file_name, sub_args);
             process::exit(exit_code);
         },
         (arg_name, sub_args) => {
@@ -351,8 +353,6 @@ enum SpawnDockerError {
     WaitFailed{source: IoError},
 }
 
-
-
 #[derive(Debug, Deserialize)]
 struct DockConfig {
     organisation: String,
@@ -365,14 +365,30 @@ struct DockEnvironmentConfig {
     context: Option<String>
 }
 
-fn run(dock_config_path: &str, args: &ArgMatches) -> i32 {
-    let conf_reader =
-        match File::open(dock_config_path) {
-            Ok(v) => {
-                v
+fn run(dock_file_name: &str, args: &ArgMatches) -> i32 {
+    let cwd =
+        match env::current_dir() {
+            Ok(dir) => {
+                dir
+            },
+            Err(err) => {
+                eprintln!("couldn't get the current directory: {}", err);
+                return 1;
+            },
+        };
+
+    let (dock_dir, conf_reader) =
+        match find_and_open_file(&cwd, dock_file_name) {
+            Ok(maybe_v) => {
+                if let Some(v) = maybe_v {
+                    v
+                } else {
+                    eprintln!("`{}` not found in path", dock_file_name);
+                    return 1;
+                }
             },
             Err(e) => {
-                eprintln!("couldn't open `{}`: {}", dock_config_path, e);
+                eprintln!("couldn't open `{}`: {}", dock_file_name, e);
                 return 1;
             },
         };
@@ -383,7 +399,7 @@ fn run(dock_config_path: &str, args: &ArgMatches) -> i32 {
                 v
             },
             Err(e) => {
-                eprintln!("couldn't parse `{}`: {}", dock_config_path, e);
+                eprintln!("couldn't parse `{}`: {}", dock_file_name, e);
                 return 1;
             },
         };
@@ -406,43 +422,17 @@ fn run(dock_config_path: &str, args: &ArgMatches) -> i32 {
         env_name,
     );
 
-    let cache_img = new_tagged_img_name(&img_name, cache_tag);
-
     let target_img = new_tagged_img_name(&img_name, "latest");
 
-    let dfile_name = format!("{}.Dockerfile", env_name);
-    let file_arg = format!("--file={}", dfile_name);
-    let mut build_args = vec!["-"];
-    let mut dockerfile = None;
-    if let Some(c) = &env.context {
-        // FIXME The context path should be defined relative to `dock.yaml`.
-
-        if path_contains_invalid_component(Path::new(c)) {
-            eprintln!("context path can't contain traversal (e.g. `..`)");
-            return 1;
-        }
-
-        build_args = vec![&file_arg, &c];
-    } else {
-        dockerfile =
-            match File::open(&dfile_name) {
-                Ok(f) => {
-                    Some(f)
-                },
-                Err(e) => {
-                    eprintln!("couldn't open '{}': {:?}", dfile_name, e);
-                    return 1;
-                },
-            };
-    }
-
-    let rebuild_result = rebuild_with_captured_output(
+    let ok = handle_rebuild_for_run(
+        dock_dir,
+        env_name,
+        &env.context,
+        &img_name,
+        cache_tag,
         &target_img,
-        &cache_img,
-        dockerfile,
-        build_args,
     );
-    if !handle_run_rebuild_result(rebuild_result) {
+    if !ok {
         return 1;
     }
 
@@ -469,6 +459,122 @@ fn run(dock_config_path: &str, args: &ArgMatches) -> i32 {
 
 fn new_tagged_img_name(img_name: &str, tag: &str) -> String {
     format!("{}:{}", img_name, tag)
+}
+
+fn handle_rebuild_for_run(
+    dock_dir: PathBuf,
+    env_name: &str,
+    env_context: &Option<String>,
+    img_name: &str,
+    cache_tag: &str,
+    target_img: &str,
+) -> bool {
+    let mut maybe_context_sub_path = None;
+    if let Some(raw_context_sub_path) = env_context {
+        let context_sub_path = Path::new(raw_context_sub_path);
+        if path_contains_invalid_component(context_sub_path) {
+            eprintln!(
+                "context path must be relative, and can't contain traversal",
+            );
+            return false;
+        }
+        maybe_context_sub_path = Some(context_sub_path)
+    }
+
+    let cache_img = new_tagged_img_name(&img_name, cache_tag);
+
+    let mut dockerfile_path = dock_dir.clone();
+    dockerfile_path.push(format!("{}.Dockerfile", env_name));
+
+    let docker_rebuild_input_result = new_docker_rebuild_input(
+        dock_dir,
+        &dockerfile_path.as_path(),
+        maybe_context_sub_path,
+    );
+    let docker_rebuild_input =
+        match docker_rebuild_input_result {
+            Ok(v) => {
+                v
+            },
+            Err(e) => {
+                eprintln!(
+                    "couldn't prepare parameters for docker rebuild: {}",
+                    e,
+                );
+                return false;
+            },
+        };
+
+    let rebuild_result = rebuild_with_captured_output(
+        target_img,
+        &cache_img,
+        docker_rebuild_input.dockerfile,
+        docker_rebuild_input
+            .args
+            .iter()
+            .map(AsRef::as_ref)
+            .collect(),
+    );
+
+    handle_run_rebuild_result(rebuild_result)
+}
+
+fn new_docker_rebuild_input(
+    dock_dir: PathBuf,
+    dockerfile_path: &Path,
+    maybe_context_sub_path: Option<&Path>,
+)
+    -> Result<DockerRebuildInput,NewDockerRebuildInputError>
+{
+    if let Some(context_sub_path) = maybe_context_sub_path {
+        let mut context_path = dock_dir;
+        context_path.push(context_sub_path);
+        let raw_context_path =
+            if let Some(v) = context_path.to_str() {
+                v
+            } else {
+                return Err(
+                    NewDockerRebuildInputError::InvalidUtf8InContextPath
+                )
+            };
+
+        let raw_dockerfile_path =
+            if let Some(v) = dockerfile_path.to_str() {
+                v
+            } else {
+                return Err(
+                    NewDockerRebuildInputError::InvalidUtf8InDockerfilePath
+                )
+            };
+
+        Ok(DockerRebuildInput{
+            dockerfile: None,
+            args: vec![
+                format!("--file={}", raw_dockerfile_path),
+                raw_context_path.to_owned(),
+            ]
+        })
+    } else {
+        let dockerfile = File::open(&dockerfile_path)
+            .context(OpenDockerfileFailed)?;
+
+        Ok(DockerRebuildInput{
+            dockerfile: Some(dockerfile),
+            args: vec!["-".to_string()],
+        })
+    }
+}
+
+struct DockerRebuildInput {
+    args: Vec<String>,
+    dockerfile: Option<File>,
+}
+
+#[derive(Debug, Snafu)]
+pub enum NewDockerRebuildInputError {
+    InvalidUtf8InContextPath,
+    InvalidUtf8InDockerfilePath,
+    OpenDockerfileFailed{source: IoError},
 }
 
 fn rebuild_with_captured_output(
@@ -579,4 +685,48 @@ fn path_contains_invalid_component(p: &Path) -> bool {
     }
 
     false
+}
+
+// `read_deps_file` reads the file named `file_name` in `start` or the deepest
+// of `start`s ancestor directories that contains a file named `file_name`.
+fn find_and_open_file(start: &Path, file_name: &str)
+    -> Result<Option<(PathBuf, File)>, FindAndOpenFileError>
+{
+    let mut cur_dir = start.to_path_buf();
+    loop {
+        let path = cur_dir.clone().join(file_name);
+
+        let maybe_conts = try_open(&path)
+            .context(ReadFailed{path})?;
+
+        if let Some(conts) = maybe_conts {
+            return Ok(Some((cur_dir, conts)));
+        }
+
+        if !cur_dir.pop() {
+            return Ok(None);
+        }
+    }
+}
+
+#[derive(Debug, Snafu)]
+pub enum FindAndOpenFileError {
+    ReadFailed{source: IoError, path: PathBuf},
+}
+
+// `try_open` returns `path` opened in read-only mode, or `None` if it doesn't
+// exist, or an error if one occurred.
+fn try_open<P: AsRef<Path>>(path: P) -> Result<Option<File>, IoError> {
+    match File::open(path) {
+        Ok(conts) => {
+            Ok(Some(conts))
+        },
+        Err(err) => {
+            if err.kind() == ErrorKind::NotFound {
+                Ok(None)
+            } else {
+                Err(err)
+            }
+        },
+    }
 }

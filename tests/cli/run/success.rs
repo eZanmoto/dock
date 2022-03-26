@@ -2,6 +2,7 @@
 // Use of this source code is governed by an MIT
 // licence that can be found in the LICENCE file.
 
+use std::path::Path;
 use std::str;
 
 use crate::docker;
@@ -216,4 +217,73 @@ fn build_with_nested_directory_as_context() {
         .stdout(test_name);
     // (D)
     docker::assert_image_exists(&test.image_tagged_name);
+}
+
+#[test]
+// Given (1) the dock file defines an environment called `<env>`
+//     AND (2) `<env>` uses the current directory as the context
+//     AND (3) the current directory contains `test.txt`
+//     AND (4) `<env>`'s Dockerfile copies `test.txt`
+// When `run <env> cat test.txt` is run in a sub-directory
+// Then (A) the command is successful
+//     AND (B) the command STDERR is empty
+//     AND (C) the command STDOUT contains the contents of `test.txt`
+//     AND (D) the target image exists
+fn run_from_subdir() {
+    let test_name = "run_from_subdir";
+    // (1)
+    let test = test_setup::assert_apply_with_dock_yaml(
+        // (2)
+        indoc!{"
+            context: .
+        "},
+        &Definition{
+            name: test_name,
+            fs: &hashmap!{
+                "dir/dummy.txt" => "",
+                // (3)
+                "test.txt" => test_name,
+            },
+            // (4)
+            dockerfile_steps: indoc!{"
+                COPY test.txt /
+            "},
+        },
+    );
+    docker::assert_remove_image(&test.image_tagged_name);
+
+    let cmd_result = run_test_cmd_from_subdir(
+        &test.dir,
+        Path::new("dir"),
+        &[test_name, "cat", "test.txt"],
+    );
+
+    cmd_result
+        // (A)
+        .code(0)
+        // (B)
+        .stderr("")
+        // (C)
+        .stdout(test_name);
+    // (D)
+    docker::assert_image_exists(&test.image_tagged_name);
+}
+
+pub fn run_test_cmd_from_subdir(
+    root_test_dir: &str,
+    subdir: &Path,
+    args: &[&str],
+) -> Assert {
+    let mut cmd = AssertCommand::cargo_bin(env!("CARGO_PKG_NAME"))
+        .expect("couldn't create command for package binary");
+    cmd.args(vec!["run"]);
+    cmd.args(args);
+
+    let mut p = Path::new(&root_test_dir).to_path_buf();
+    p.push(subdir);
+    cmd.current_dir(p);
+
+    cmd.env_clear();
+
+    cmd.assert()
 }
