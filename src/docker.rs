@@ -4,6 +4,7 @@
 
 use std::ffi::OsStr;
 use std::fmt::Debug;
+use std::io::BufRead;
 use std::io::Error as IoError;
 use std::process::Command;
 use std::process::ExitStatus;
@@ -62,4 +63,27 @@ where
 pub enum StreamRunError {
     SpawnFailed{source: IoError},
     WaitFailed{source: IoError},
+}
+
+pub fn get_image_ids(repository: &str)
+    -> Result<Vec<String>, GetImageIdsError>
+{
+    let output = assert_run(&["images", "--quiet", repository])
+        .context(ViewImagesFailed)?;
+
+    let mut ids = vec![];
+    for line in output.stdout.lines() {
+        let id = line
+            .context(ReadStdoutLineFailed)?;
+
+        ids.push(id);
+    }
+
+    Ok(ids)
+}
+
+#[derive(Debug, Snafu)]
+pub enum GetImageIdsError {
+    ViewImagesFailed{source: AssertRunError},
+    ReadStdoutLineFailed{source: IoError},
 }

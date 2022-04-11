@@ -17,18 +17,14 @@ use snafu::Snafu;
 
 use docker;
 use docker::AssertRunError;
+use docker::GetImageIdsError;
 use docker::StreamRunError;
 
-pub fn rebuild_with_streaming_output(
-    target_img: &str,
-    cache_img: &str,
-    args: Vec<&str>,
-)
+pub fn rebuild_with_streaming_output(target_img: &str, args: Vec<&str>)
     -> Result<ExitStatus, RebuildError<ExitStatus, StreamRunError>>
 {
     rebuild_img(
         target_img,
-        cache_img,
         args,
         |build_args| {
             let build_result = docker::stream_run(build_args)?;
@@ -38,25 +34,24 @@ pub fn rebuild_with_streaming_output(
     )
 }
 
-fn rebuild_img<F, V, E>(
-    target_img: &str,
-    cache_img: &str,
-    args: Vec<&str>,
-    run_docker: F,
-)
+fn rebuild_img<F, V, E>(target_img: &str, args: Vec<&str>, run_docker: F)
     -> Result<V, RebuildError<V, E>>
 where
     F: FnOnce(Vec<&str>) -> Result<(V, bool), E>,
     E: Error + 'static,
     V: Clone + Debug,
 {
-    // TODO Check the actual error, and return an error if `docker tag`
-    // returned an unexpected error.
-    let tag_result =
-        Command::new("docker")
-            .args(&["tag", target_img, cache_img])
-            .output()
-            .context(TagFailed)?;
+    let img_ids = docker::get_image_ids(target_img)
+        .context(GetImageIdsBeforeBuildFailed)?;
+
+    let maybe_old_img_id =
+        match &img_ids[..] {
+            [] => None,
+            [id] => Some(id.clone()),
+            _ => return Err(RebuildError::MultipleImageIdsBeforeBuild{
+                ids: img_ids,
+            }),
+        };
 
     let tag_flag = &format!("--tag={}", target_img);
 
@@ -71,23 +66,33 @@ where
     let (build_result, build_success) = run_docker(build_args)
         .context(BuildNewImageFailed)?;
 
-    // We only attempt to remove or re-tag the cached image if the initial
-    // tagging succeeded.
-    if tag_result.status.success() {
-        if build_success {
-            docker::assert_run(&["rmi", cache_img])
-                .with_context(|| RemoveOldImageFailed{
-                    build_result: build_result.clone(),
-                })?;
-        } else {
-            docker::assert_run(&["tag", cache_img, target_img])
-                .with_context(|| UntagFailed{
-                    build_result: build_result.clone(),
-                })?;
-        }
+    let img_ids = docker::get_image_ids(target_img)
+        .context(GetImageIdsAfterBuildFailed)?;
+
+    if !build_success {
+        return Ok(build_result);
     }
 
-    Ok(build_result)
+    match &img_ids[..] {
+        [new_img_id] => {
+            if let Some(old_img_id) = maybe_old_img_id {
+                if &old_img_id != new_img_id {
+                    docker::assert_run(&["rmi", &old_img_id])
+                        .with_context(|| RemoveOldImageFailed{
+                            build_result: build_result.clone(),
+                        })?;
+                }
+            }
+
+            Ok(build_result)
+        },
+        [] => {
+            Err(RebuildError::NoImageIdsAfterBuild)
+        },
+        _ => {
+            Err(RebuildError::MultipleImageIdsAfterBuild{ids: img_ids})
+        },
+    }
 }
 
 #[allow(clippy::pub_enum_variant_names)]
@@ -96,15 +101,21 @@ pub enum RebuildError<T, E>
 where
     E: Error + 'static
 {
-    TagFailed{source: IoError},
+    GetImageIdsBeforeBuildFailed{source: GetImageIdsError},
+    GetImageIdsAfterBuildFailed{source: GetImageIdsError},
     BuildNewImageFailed{source: E},
-    UntagFailed{source: AssertRunError, build_result: T},
     RemoveOldImageFailed{source: AssertRunError, build_result: T},
+
+    // NOTE The following are considered "developer errors" - they aren't
+    // expected to happen, and if they do, then this may indicate that tighter
+    // handling needs to be performed when retrieving image IDs.
+    MultipleImageIdsBeforeBuild{ids: Vec<String>},
+    NoImageIdsAfterBuild,
+    MultipleImageIdsAfterBuild{ids: Vec<String>},
 }
 
 pub fn rebuild_with_captured_output(
     target_img: &str,
-    cache_img: &str,
     dockerfile: Option<File>,
     args: Vec<&str>,
 )
@@ -112,7 +123,6 @@ pub fn rebuild_with_captured_output(
 {
     rebuild_img(
         target_img,
-        cache_img,
         args,
         |build_args| {
             let stdin_behaviour =
