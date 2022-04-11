@@ -3,4 +3,4 @@
 // licence that can be found in the LICENCE file.
 
 mod errors;
-mod success;
+pub mod success;

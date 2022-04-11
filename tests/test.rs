@@ -12,4 +12,5 @@ extern crate predicates;
 mod assert_run;
 mod cli;
 mod docker;
+mod line_matcher;
 mod test_setup;

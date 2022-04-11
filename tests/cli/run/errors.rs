@@ -4,13 +4,12 @@
 
 use std::str;
 
+use crate::cli::rebuild::success as rebuild_success;
 use crate::docker;
-use crate::docker::build::DockerBuild;
 use crate::test_setup;
 use crate::test_setup::Definition;
 use super::success;
 
-use crate::assert_cmd::assert::Assert;
 use crate::predicates::prelude::predicate;
 use crate::predicates::prelude::predicate::str as predicate_str;
 use crate::predicates::str::RegexPredicate;
@@ -48,19 +47,11 @@ fn run_with_build_failure() {
             .code(1)
             // (B)
             .stderr(exp);
+    let stdout = rebuild_success::new_str_from_cmd_stdout(&cmd_result);
     // (C)
-    let stdout = new_str_from_cmd_stdout(&cmd_result);
-    let img_name = &test.image_tagged_name;
-    DockerBuild::assert_parse_from_stdout(&mut stdout.lines(), img_name);
+    rebuild_success::assert_docker_build_stdout(&stdout);
     // (D)
-    docker::assert_image_doesnt_exist(img_name);
-}
-
-fn new_str_from_cmd_stdout(cmd_result: &Assert) -> &str {
-    let stdout_bytes = &cmd_result.get_output().stdout;
-
-    str::from_utf8(&stdout_bytes)
-        .expect("couldn't decode STDOUT")
+    docker::assert_image_doesnt_exist(&test.image_tagged_name);
 }
 
 #[test]

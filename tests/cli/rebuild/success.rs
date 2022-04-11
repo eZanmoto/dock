@@ -7,11 +7,13 @@ use std::str;
 use crate::assert_run;
 use crate::docker;
 use crate::docker::build::DockerBuild;
+use crate::line_matcher;
+use crate::line_matcher::LineMatcher;
 use crate::test_setup;
 use crate::test_setup::Definition;
 
-use crate::assert_cmd::Command as AssertCommand;
 use crate::assert_cmd::assert::Assert as AssertOutput;
+use crate::assert_cmd::Command as AssertCommand;
 
 #[test]
 // Given (1) the Dockerfile creates a test file
@@ -73,19 +75,45 @@ fn assert_match_docker_run_stdout(
     assert_eq!(exp_stdout, act_stdout);
 }
 
-fn assert_docker_build(cmd_result: AssertOutput, img_name: &str)
+fn assert_docker_build(cmd_result: AssertOutput, tagged_name: &str)
     -> DockerBuild
 {
     let cmd_result = cmd_result.code(0);
     let cmd_result = cmd_result.stderr("");
 
+    let stdout = new_str_from_cmd_stdout(&cmd_result);
+    let maybe_build = assert_docker_build_stdout(stdout);
+
+    if let Some(build) = maybe_build {
+        assert_eq!(build.tagged_name(), tagged_name);
+
+        build
+    } else {
+        panic!("build was unsuccessful: {}", stdout);
+    }
+}
+
+pub fn new_str_from_cmd_stdout(cmd_result: &AssertOutput) -> &str {
     let stdout_bytes = &cmd_result.get_output().stdout;
 
-    let stdout = str::from_utf8(stdout_bytes)
-        .expect("couldn't decode STDOUT");
+    str::from_utf8(&stdout_bytes)
+        .expect("couldn't decode STDOUT")
+}
 
-    DockerBuild::assert_parse_from_stdout(&mut stdout.lines(), &img_name)
-        .expect("couldn't parse Docker build STDOUT")
+pub fn assert_docker_build_stdout(stdout: &str) -> Option<DockerBuild> {
+    let mut lines = LineMatcher::new(stdout);
+    let result = DockerBuild::parse_from_stdout(&mut lines);
+
+    match result {
+        Ok(v) => {
+            v
+        },
+        Err(e) => {
+            let lnum = lines.line_num();
+            let msg = line_matcher::render_match_error(stdout, lnum, &e);
+            panic!("{}", msg);
+        },
+    }
 }
 
 #[test]

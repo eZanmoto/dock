@@ -15,8 +15,13 @@ check: \
 # We pull base Docker images required by the tests, even though they'd
 # automatically be pulled during builds, in order to make the output more
 # predictable.
+#
+# We run `clean_images` before starting the tests in order to make the tests
+# more deterministic, because having leftover images from previous runs can
+# cause the output from `docker build` to be altered (due to the use of
+# caching).
 .PHONY: check_intg
-check_intg: $(tgt_test_dir)
+check_intg: clean_images $(tgt_test_dir)
 	bash scripts/docker_rbuild.sh \
 			$(test_base_img_name) \
 			$(test_base_img_tag) \
@@ -62,13 +67,9 @@ $(tgt_dir):
 	mkdir '$@'
 
 .PHONY: clean
-clean:
-	docker rmi \
-		$(shell \
-			docker images \
-				| grep \
-					'$(test_img_namespace)' \
-				| cut \
-					--delimiter=' ' \
-					--field=1 \
-		)
+clean: clean_images
+
+.PHONY: clean_images
+clean_images:
+	bash scripts/clean_images.sh \
+		'$(test_img_namespace)'
