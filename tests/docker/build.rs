@@ -57,12 +57,11 @@ impl DockerBuild {
     }
 
     // TODO Consider returning `&str`.
-    pub fn img_id(&self) -> String {
-        self.layers
+    pub fn img_id(&self) -> &str {
+        &self.layers
             .last()
             .expect("Docker build had no layers")
             .id
-            .clone()
     }
 }
 

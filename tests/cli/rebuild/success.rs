@@ -170,7 +170,7 @@ fn rebuild_replaces_old_image() {
     // (D)
     assert_ne!(new_build.img_id(), old_image_id);
     // (E)
-    assert!(!get_local_docker_image_ids().contains(&old_image_id));
+    assert!(!get_local_docker_image_ids().contains(&old_image_id.to_string()));
     // (F)
     assert_match_docker_run_stdout(
         &test.image_tagged_name,
