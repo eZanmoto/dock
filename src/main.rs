@@ -36,7 +36,6 @@ mod rebuild;
 use rebuild::RebuildError;
 use rebuild::RebuildWithCapturedOutputError;
 
-const CACHE_TAG_FLAG: &str = "cache-tag";
 const TAGGED_IMG_FLAG: &str = "tagged-image";
 const DOCKER_ARGS_FLAG: &str = "docker-args";
 const ENV_FLAG: &str = "env";
@@ -65,20 +64,6 @@ fn main() {
                     .setting(AppSettings::TrailingVarArg)
                     .about(rebuild_about)
                     .args(&[
-                        Arg::with_name(CACHE_TAG_FLAG)
-                            .long(CACHE_TAG_FLAG)
-                            .default_value("cached")
-                            .help("The tag for the cache image")
-                            .long_help(&format!(
-                                "The tag to use for the image that will be \
-                                 replaced by the rebuild. If an image with \
-                                 the tagged name `{tagged_img_flag}` exists \
-                                 then its tag will be replaced by \
-                                 `{cache_tag_flag}` for the duration of the \
-                                 rebuild.",
-                                tagged_img_flag = TAGGED_IMG_FLAG,
-                                cache_tag_flag = CACHE_TAG_FLAG,
-                            )),
                         Arg::with_name(TAGGED_IMG_FLAG)
                             .required(true)
                             .help("The tagged name for the new image")
@@ -94,20 +79,6 @@ fn main() {
                     .setting(AppSettings::TrailingVarArg)
                     .about(run_about)
                     .args(&[
-                        Arg::with_name(CACHE_TAG_FLAG)
-                            .long(CACHE_TAG_FLAG)
-                            .default_value("cached")
-                            .help("The tag for the cache image")
-                            .long_help(&format!(
-                                "The tag to use for the image that will be \
-                                 replaced by the rebuild. If an image with \
-                                 the tagged name `{tagged_img_flag}` exists \
-                                 then its tag will be replaced by \
-                                 `{cache_tag_flag}` for the duration of the \
-                                 rebuild.",
-                                tagged_img_flag = TAGGED_IMG_FLAG,
-                                cache_tag_flag = CACHE_TAG_FLAG,
-                            )),
                         Arg::with_name(ENV_FLAG)
                             .required(true)
                             .help("The environment to run"),
@@ -128,7 +99,6 @@ fn main() {
 
             let exit_code = rebuild(
                 sub_args.value_of(TAGGED_IMG_FLAG).unwrap(),
-                sub_args.value_of(CACHE_TAG_FLAG).unwrap(),
                 docker_args,
             );
             process::exit(exit_code);
@@ -149,23 +119,7 @@ fn main() {
     }
 }
 
-fn rebuild(target_img: &str, cache_tag: &str, docker_args: Vec<&str>) -> i32 {
-    let target_img_parts =
-        target_img.split(':').collect::<Vec<&str>>();
-
-    let img_name =
-        if let [name, _tag] = target_img_parts.as_slice() {
-            name
-        } else {
-            eprintln!(
-                "`{}` must contain exactly one `:`",
-                TAGGED_IMG_FLAG,
-            );
-            return 1;
-        };
-
-    let cache_img = new_tagged_img_name(img_name, cache_tag);
-
+fn rebuild(target_img: &str, docker_args: Vec<&str>) -> i32 {
     if let Some(i) = index_of_first_unsupported_flag(&docker_args) {
         eprintln!("unsupported argument: `{}`", docker_args[i]);
         return 1;
@@ -173,7 +127,6 @@ fn rebuild(target_img: &str, cache_tag: &str, docker_args: Vec<&str>) -> i32 {
 
     let rebuild_result = rebuild::rebuild_with_streaming_output(
         &target_img,
-        &cache_img,
         docker_args,
     );
     match rebuild_result {
@@ -272,7 +225,6 @@ fn run(dock_file_name: &str, args: &ArgMatches) -> i32 {
         };
 
     let env_name = args.value_of(ENV_FLAG).unwrap();
-    let cache_tag = args.value_of(CACHE_TAG_FLAG).unwrap();
 
     let env =
         if let Some(env) = conf.environments.get(env_name) {
@@ -295,8 +247,6 @@ fn run(dock_file_name: &str, args: &ArgMatches) -> i32 {
         dock_dir,
         env_name,
         &env.context,
-        &img_name,
-        cache_tag,
         &target_img,
     );
     if !ok {
@@ -332,8 +282,6 @@ fn handle_rebuild_for_run(
     dock_dir: PathBuf,
     env_name: &str,
     env_context: &Option<String>,
-    img_name: &str,
-    cache_tag: &str,
     target_img: &str,
 ) -> bool {
     let mut maybe_context_sub_path = None;
@@ -347,8 +295,6 @@ fn handle_rebuild_for_run(
         }
         maybe_context_sub_path = Some(context_sub_path)
     }
-
-    let cache_img = new_tagged_img_name(&img_name, cache_tag);
 
     let mut dockerfile_path = dock_dir.clone();
     dockerfile_path.push(format!("{}.Dockerfile", env_name));
@@ -374,7 +320,6 @@ fn handle_rebuild_for_run(
 
     let rebuild_result = rebuild::rebuild_with_captured_output(
         target_img,
-        &cache_img,
         docker_rebuild_input.dockerfile,
         docker_rebuild_input
             .args
