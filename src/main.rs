@@ -188,6 +188,7 @@ struct DockConfig {
 struct DockEnvironmentConfig {
     context: Option<String>,
     enabled: Option<Vec<DockEnvironmentEnabledConfig>>,
+    args: Option<Vec<String>>,
 }
 
 #[derive(Debug, Deserialize, PartialEq)]
@@ -462,6 +463,10 @@ fn prepare_run_args(
     -> Result<Vec<String>, PrepareRunArgsError>
 {
     let mut run_args = to_strings(&["run", "--rm"]);
+
+    if let Some(args) = &env.args {
+        run_args.extend(args.clone());
+    }
 
     if let Some(enabled) = &env.enabled {
         if enabled.contains(&DockEnvironmentEnabledConfig::LocalUserGroup) {

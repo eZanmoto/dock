@@ -454,3 +454,81 @@ fn run_with_local_group() {
     // (D)
     docker::assert_image_exists(&test.image_tagged_name);
 }
+
+#[test]
+// Given (1) the dock file defines an environment called `<env>`
+//     AND (2) `<env>` adds an `--env=X=a` and `--env=Y=b` argument
+// When `run <env> sh -c 'echo $X $Y'` is run
+// Then (A) the command is successful
+//     AND (B) the command STDERR is empty
+//     AND (C) the command STDOUT contains "a b"
+//     AND (D) the target image exists
+fn run_with_env_var() {
+    let test_name = "run_with_env_var";
+    // (1)
+    let test = test_setup::assert_apply_with_dock_yaml(
+        // (2)
+        indoc!{"
+            args:
+            - --env=X=a
+            - --env=Y=b
+        "},
+        &Definition{
+            name: test_name,
+            fs: &hashmap!{},
+            dockerfile_steps: "",
+        },
+    );
+    docker::assert_remove_image(&test.image_tagged_name);
+    let args = &[test_name, "sh", "-c", "echo $X $Y"];
+
+    let cmd_result = run_test_cmd(test.dir, args);
+
+    cmd_result
+        // (A)
+        .code(0)
+        // (B)
+        .stderr("")
+        // (C)
+        .stdout("a b\n");
+    // (D)
+    docker::assert_image_exists(&test.image_tagged_name);
+}
+
+#[test]
+// Given (1) the dock file defines an environment called `<env>`
+//     AND (2) `<env>` adds a `--user=1234` argument
+// When `run <env> id -u` is run
+// Then (A) the command is successful
+//     AND (B) the command STDERR is empty
+//     AND (C) the command STDOUT contains "1234"
+//     AND (D) the target image exists
+fn run_with_specific_user() {
+    let test_name = "run_with_specific_user";
+    // (1)
+    let test = test_setup::assert_apply_with_dock_yaml(
+        // (2)
+        indoc!{"
+            args:
+            - --user=1234
+        "},
+        &Definition{
+            name: test_name,
+            fs: &hashmap!{},
+            dockerfile_steps: "",
+        },
+    );
+    docker::assert_remove_image(&test.image_tagged_name);
+
+    let cmd_result = run_test_cmd(test.dir, &[test_name, "id", "-u"]);
+
+    cmd_result
+        // (A)
+        .code(0)
+        // (B)
+        .stderr("")
+        // (C)
+        .stdout("1234\n");
+    // (D)
+    docker::assert_image_exists(&test.image_tagged_name);
+}
