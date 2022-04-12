@@ -4,6 +4,7 @@
 
 use std::collections::HashMap;
 use std::env;
+use std::ffi::OsStr;
 use std::fmt::Debug;
 use std::fs::File;
 use std::io;
@@ -13,8 +14,11 @@ use std::path::Component;
 use std::path::Path;
 use std::path::PathBuf;
 use std::process;
+use std::process::Command;
 use std::process::ExitStatus;
 use std::process::Output;
+use std::str;
+use std::str::Utf8Error;
 
 extern crate clap;
 extern crate serde;
@@ -182,7 +186,14 @@ struct DockConfig {
 
 #[derive(Debug, Deserialize)]
 struct DockEnvironmentConfig {
-    context: Option<String>
+    context: Option<String>,
+    enabled: Option<Vec<DockEnvironmentEnabledConfig>>,
+}
+
+#[derive(Debug, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+enum DockEnvironmentEnabledConfig {
+    LocalUserGroup,
 }
 
 fn run(dock_file_name: &str, args: &ArgMatches) -> i32 {
@@ -241,7 +252,7 @@ fn run(dock_file_name: &str, args: &ArgMatches) -> i32 {
         env_name,
     );
 
-    let target_img = new_tagged_img_name(&img_name, "latest");
+    let target_img = format!("{}:latest", &img_name);
 
     let ok = handle_rebuild_for_run(
         dock_dir,
@@ -259,23 +270,28 @@ fn run(dock_file_name: &str, args: &ArgMatches) -> i32 {
             None => vec![],
         };
 
-    let mut run_args = vec!["run", "--rm", &target_img];
-    run_args.extend(extra_run_args);
+    let run_args =
+        match prepare_run_args(env, target_img, &extra_run_args) {
+            Ok(v) => {
+                v
+            },
+            Err(e) => {
+                eprintln!("{:?}", e);
+
+                return 1;
+            },
+        };
 
     match docker::stream_run(run_args) {
         Ok(exit_status) => {
             exit_code_from_exit_status(exit_status)
         },
-        Err(v) => {
-            eprintln!("{:?}", v);
+        Err(e) => {
+            eprintln!("{:?}", e);
 
             1
         },
     }
-}
-
-fn new_tagged_img_name(img_name: &str, tag: &str) -> String {
-    format!("{}:{}", img_name, tag)
 }
 
 fn handle_rebuild_for_run(
@@ -436,4 +452,90 @@ fn path_contains_invalid_component(p: &Path) -> bool {
     }
 
     false
+}
+
+fn prepare_run_args(
+    env: &DockEnvironmentConfig,
+    target_img: String,
+    extra_args: &[&str],
+)
+    -> Result<Vec<String>, PrepareRunArgsError>
+{
+    let mut run_args = to_strings(&["run", "--rm"]);
+
+    if let Some(enabled) = &env.enabled {
+        if enabled.contains(&DockEnvironmentEnabledConfig::LocalUserGroup) {
+            let user_id = run_command("id", &["--user"])
+                .context(GetUserIdFailed)?;
+
+            let group_id = run_command("id", &["--group"])
+                .context(GetGroupIdFailed)?;
+
+            let user_group =
+                format!("{}:{}", user_id.trim_end(), group_id.trim_end());
+            run_args.extend(to_strings(&["--user", &user_group]));
+        }
+    }
+
+    run_args.push(target_img);
+
+    run_args.extend(to_strings(&extra_args));
+
+    Ok(run_args)
+}
+
+#[derive(Debug, Snafu)]
+enum PrepareRunArgsError {
+    GetUserIdFailed{source: RunCommandError},
+    GetGroupIdFailed{source: RunCommandError},
+}
+
+fn to_strings(strs: &[&str]) -> Vec<String> {
+    strs
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<String>>()
+}
+
+fn run_command(prog: &str, args: &[&str]) -> Result<String, RunCommandError> {
+    let output = assert_run(prog, args)
+        .context(AssertRunFailed)?;
+
+    let stdout_bytes = output.stdout;
+    let stdout = str::from_utf8(&stdout_bytes)
+        .with_context(|| ConvertStdoutToUtf8Failed{
+            stdout_bytes: stdout_bytes.clone(),
+        })?;
+
+    Ok(stdout.to_string())
+}
+
+#[derive(Debug, Snafu)]
+enum RunCommandError {
+    AssertRunFailed{source: AssertRunError},
+    ConvertStdoutToUtf8Failed{source: Utf8Error, stdout_bytes: Vec<u8>},
+}
+
+fn assert_run<I, S>(prog: &str, args: I) -> Result<Output, AssertRunError>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<OsStr>,
+{
+    let output =
+        Command::new(prog)
+            .args(args)
+            .output()
+            .context(RunFailed)?;
+
+    if !output.status.success() {
+        return Err(AssertRunError::NonZeroExit{output});
+    }
+
+    Ok(output)
+}
+
+#[derive(Debug, Snafu)]
+pub enum AssertRunError {
+    RunFailed{source: IoError},
+    NonZeroExit{output: Output},
 }

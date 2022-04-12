@@ -5,6 +5,7 @@
 use std::path::Path;
 use std::str;
 
+use crate::assert_run;
 use crate::docker;
 use crate::test_setup;
 use crate::test_setup::Definition;
@@ -286,4 +287,170 @@ pub fn run_test_cmd_from_subdir(
     cmd.env_clear();
 
     cmd.assert()
+}
+
+#[test]
+// Given (1) the dock file defines an environment called `<env>`
+//     AND (2) the container runs as root by default
+//     AND (3) the local user doesn't have user ID 0
+// When `run <env> id -u` is run
+// Then (A) the command is successful
+//     AND (B) the command STDERR is empty
+//     AND (C) the command STDOUT contains `0`
+//     AND (D) the target image exists
+fn run_without_local_user() {
+    let test_name = "run_without_local_user";
+    // (1)
+    let test = test_setup::assert_apply_with_empty_dock_yaml(&Definition{
+        name: test_name,
+        // (2)
+        dockerfile_steps: &indoc!{"
+            USER root
+        "},
+        fs: &hashmap!{},
+    });
+    docker::assert_remove_image(&test.image_tagged_name);
+    let user_id = assert_run::assert_run_stdout("id", &["--user"]);
+    // (3)
+    assert_ne!(user_id.trim_end(), "0");
+
+    let cmd_result = run_test_cmd(test.dir, &[test_name, "id", "-u"]);
+
+    cmd_result
+        // (A)
+        .code(0)
+        // (B)
+        .stderr("")
+        // (C)
+        .stdout("0\n");
+    // (D)
+    docker::assert_image_exists(&test.image_tagged_name);
+}
+
+#[test]
+// Given (1) the dock file defines an environment called `<env>`
+//     AND (2) the container runs as root by default
+//     AND (3) the local user doesn't have group ID 0
+// When `run <env> id -u` is run
+// Then (A) the command is successful
+//     AND (B) the command STDERR is empty
+//     AND (C) the command STDOUT contains `0`
+//     AND (D) the target image exists
+fn run_without_local_group() {
+    let test_name = "run_without_local_group";
+    // (1)
+    let test = test_setup::assert_apply_with_empty_dock_yaml(&Definition{
+        name: test_name,
+        // (2)
+        dockerfile_steps: &indoc!{"
+            USER root
+        "},
+        fs: &hashmap!{},
+    });
+    docker::assert_remove_image(&test.image_tagged_name);
+    let user_id = assert_run::assert_run_stdout("id", &["--group"]);
+    // (3)
+    assert_ne!(user_id.trim_end(), "0");
+
+    let cmd_result = run_test_cmd(test.dir, &[test_name, "id", "-g"]);
+
+    cmd_result
+        // (A)
+        .code(0)
+        // (B)
+        .stderr("")
+        // (C)
+        .stdout("0\n");
+    // (D)
+    docker::assert_image_exists(&test.image_tagged_name);
+}
+
+#[test]
+// Given (1) the dock file defines an environment called `<env>`
+//     AND (2) `<env>` enables `local_user_group`
+//     AND (3) the container runs as root by default
+//     AND (4) the local user has user ID `<user_id>`
+// When `run <env> id -u` is run
+// Then (A) the command is successful
+//     AND (B) the command STDERR is empty
+//     AND (C) the command STDOUT contains `<user_id>`
+//     AND (D) the target image exists
+fn run_with_local_user() {
+    let test_name = "run_with_local_user";
+    // (1)
+    let test = test_setup::assert_apply_with_dock_yaml(
+        // (2)
+        indoc!{"
+            enabled:
+            - local_user_group
+        "},
+        &Definition{
+            name: test_name,
+            fs: &hashmap!{},
+            // (3)
+            dockerfile_steps: &indoc!{"
+                USER root
+            "},
+        },
+    );
+    docker::assert_remove_image(&test.image_tagged_name);
+    // (4)
+    let user_id = assert_run::assert_run_stdout("id", &["--user"]);
+
+    let cmd_result = run_test_cmd(test.dir, &[test_name, "id", "-u"]);
+
+    cmd_result
+        // (A)
+        .code(0)
+        // (B)
+        .stderr("")
+        // (C)
+        .stdout(user_id);
+    // (D)
+    docker::assert_image_exists(&test.image_tagged_name);
+}
+
+#[test]
+// Given (1) the dock file defines an environment called `<env>`
+//     AND (2) `<env>` enables `local_user_group`
+//     AND (3) the container runs as root by default
+//     AND (4) the local user has group ID `<group_id>`
+// When `run <env> id -g` is run
+// Then (A) the command is successful
+//     AND (B) the command STDERR is empty
+//     AND (C) the command STDOUT contains `<group_id>`
+//     AND (D) the target image exists
+fn run_with_local_group() {
+    let test_name = "run_with_local_group";
+    // (1)
+    let test = test_setup::assert_apply_with_dock_yaml(
+        // (2)
+        indoc!{"
+            enabled:
+            - local_user_group
+        "},
+        &Definition{
+            name: test_name,
+            fs: &hashmap!{},
+            // (3)
+            dockerfile_steps: &indoc!{"
+                USER root
+            "},
+        },
+    );
+    docker::assert_remove_image(&test.image_tagged_name);
+    // (4)
+    let user_id = assert_run::assert_run_stdout("id", &["--group"]);
+
+    let cmd_result = run_test_cmd(test.dir, &[test_name, "id", "-g"]);
+
+    cmd_result
+        // (A)
+        .code(0)
+        // (B)
+        .stderr("")
+        // (C)
+        .stdout(user_id);
+    // (D)
+    docker::assert_image_exists(&test.image_tagged_name);
 }

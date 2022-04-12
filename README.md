@@ -51,7 +51,7 @@ organisation: 'ezanmoto'
 project: 'dock'
 
 environments:
-    build: {}
+  build: {}
 ```
 
 Running `dock run build make` will do the following, in order:
@@ -62,6 +62,26 @@ Running `dock run build make` will do the following, in order:
 
 The container is run with `--rm`, so it is automatically removed after the
 command finishes.
+
+#### Configuration
+
+Extra parameters can be provided to the underlying `docker run` command using
+the environment block:
+
+``` yaml
+organisation: 'ezanmoto'
+project: 'dock'
+
+environments:
+  build:
+    enabled:
+    - local_user_group
+```
+
+* `local_user_group`: This performs "local user mapping", so that the command
+  run inside the container is run with the user ID and group ID of the user
+  running `dock`. Note that these IDs are discovered using the `id` program, and
+  so, a failure may occur if the `id` program isn't found.
 
 Development
 -----------

@@ -21,17 +21,23 @@ pub fn assert_apply_with_dock_yaml(
 ) -> References {
     let mut fs_state = defn.fs.clone();
 
+    let indented_env_defn =
+        env_defn
+            .lines()
+            .collect::<Vec<&str>>()
+            .join("\n    ");
+
     let dock_yaml = &formatdoc!{
         "
             organisation: 'ezanmoto'
             project: 'dock.test'
 
             environments:
-                {test_name}:
-                    {env_defn}
+              {test_name}:
+                {env_defn}
         ",
         test_name = defn.name,
-        env_defn = env_defn,
+        env_defn = indented_env_defn,
     };
 
     let dock_yaml_name = "dock.yaml";
