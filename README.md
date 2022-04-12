@@ -74,10 +74,15 @@ project: 'dock'
 
 environments:
   build:
+    args:
+    - --env=PORT=8080
+    - --group-add=test
     enabled:
     - local_user_group
 ```
 
+* `args`: These `args` are passed to the underlying `docker run` command in the
+  same order.
 * `local_user_group`: This performs "local user mapping", so that the command
   run inside the container is run with the user ID and group ID of the user
   running `dock`. Note that these IDs are discovered using the `id` program, and
