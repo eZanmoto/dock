@@ -6,10 +6,12 @@ use std::collections::HashMap;
 use std::env;
 use std::ffi::OsStr;
 use std::fmt::Debug;
+use std::fs as std_fs;
 use std::fs::File;
 use std::io;
 use std::io::Error as IoError;
 use std::io::Write;
+use std::os::unix::fs::MetadataExt;
 use std::path::Component;
 use std::path::Path;
 use std::path::PathBuf;
@@ -195,6 +197,7 @@ struct DockEnvironmentConfig {
 #[serde(rename_all = "snake_case")]
 enum DockEnvironmentEnabledConfig {
     LocalUserGroup,
+    NestedDocker,
 }
 
 fn run(dock_file_name: &str, args: &ArgMatches) -> i32 {
@@ -480,6 +483,20 @@ fn prepare_run_args(
                 format!("{}:{}", user_id.trim_end(), group_id.trim_end());
             run_args.extend(to_strings(&["--user", &user_group]));
         }
+
+        if enabled.contains(&DockEnvironmentEnabledConfig::NestedDocker) {
+            let meta = std_fs::metadata(DOCKER_SOCK_PATH)
+                .context(GetDockerSockMetadataFailed)?;
+
+            let mount_spec = format!(
+                "type=bind,src={docker_sock_path},dst={docker_sock_path}",
+                docker_sock_path = DOCKER_SOCK_PATH,
+            );
+            run_args.extend(to_strings(&[
+                &format!("--mount={}", mount_spec),
+                &format!("--group-add={}", meta.gid()),
+            ]));
+        }
     }
 
     run_args.push(target_img);
@@ -489,10 +506,14 @@ fn prepare_run_args(
     Ok(run_args)
 }
 
+const DOCKER_SOCK_PATH: &str = "/var/run/docker.sock";
+
+#[allow(clippy::enum_variant_names)]
 #[derive(Debug, Snafu)]
 enum PrepareRunArgsError {
     GetUserIdFailed{source: RunCommandError},
     GetGroupIdFailed{source: RunCommandError},
+    GetDockerSockMetadataFailed{source: IoError},
 }
 
 fn to_strings(strs: &[&str]) -> Vec<String> {

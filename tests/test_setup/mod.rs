@@ -7,8 +7,8 @@ use std::fs;
 use std::panic;
 use std::path::Path;
 
+pub const IMAGE_NAME_ROOT: &str = env!("TEST_IMG_NAMESPACE");
 const TEST_BASE_IMG: &str = env!("TEST_BASE_IMG");
-const IMAGE_NAME_ROOT: &str = env!("TEST_IMG_NAMESPACE");
 const TEST_DIR: &str = env!("TEST_DIR");
 
 pub fn assert_apply_with_empty_dock_yaml(defn: &Definition) -> References {
@@ -131,7 +131,7 @@ pub fn assert_create_dir(dir: String, name: &str) -> String {
     path
 }
 
-fn assert_write_fs_state(root_dir: &str, fs_state: &HashMap<&str, &str>) {
+pub fn assert_write_fs_state(root_dir: &str, fs_state: &HashMap<&str, &str>) {
     for (fname, fconts) in fs_state {
         let raw_test_file = &format!("{}/{}", &root_dir, fname);
         let test_file = Path::new(raw_test_file);

@@ -79,10 +79,14 @@ environments:
     - --group-add=test
     enabled:
     - local_user_group
+    - nested_docker
 ```
 
 * `args`: These `args` are passed to the underlying `docker run` command in the
   same order.
+* `nested_docker`: This mounts the default local Docker socket file inside the
+  container and, inside the container, adds the user to the owner group for the
+  socket file.
 * `local_user_group`: This performs "local user mapping", so that the command
   run inside the container is run with the user ID and group ID of the user
   running `dock`. Note that these IDs are discovered using the `id` program, and

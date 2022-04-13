@@ -9,6 +9,7 @@ use crate::assert_run;
 use crate::docker;
 use crate::test_setup;
 use crate::test_setup::Definition;
+use crate::test_setup::References;
 
 use crate::assert_cmd::assert::Assert;
 use crate::assert_cmd::Command as AssertCommand;
@@ -531,4 +532,89 @@ fn run_with_specific_user() {
         .stdout("1234\n");
     // (D)
     docker::assert_image_exists(&test.image_tagged_name);
+}
+
+#[test]
+// Given (1) the dock file defines an environment called `<env>`
+//     AND (2) `<env>`'s Dockerfile installs a Docker client
+//     AND (3) `<env>` enables `nested_docker`
+// When `run <env> docker version` is run
+// Then (A) the command is successful
+//     AND (B) the command STDERR is empty
+//     AND (C) the target image exists
+fn run_with_nested_docker() {
+    let test_name = "run_with_nested_docker";
+    // (1)
+    let test = assert_apply(&TestDefinition{
+        name: test_name,
+        // (2)
+        dockerfile: indoc!{"
+            FROM docker:19.03.8
+        "},
+        // (3)
+        env_defn: indoc!{"
+            enabled:
+            - nested_docker
+        "},
+    });
+    docker::assert_remove_image(&test.image_tagged_name);
+    let args = &[test_name, "docker", "version"];
+
+    let cmd_result = run_test_cmd(test.dir, args);
+
+    cmd_result
+        // (A)
+        .code(0)
+        // (B)
+        .stderr("");
+    // (D)
+    docker::assert_image_exists(&test.image_tagged_name);
+}
+
+pub fn assert_apply(defn: &TestDefinition) -> References {
+    // NOTE There is a lot of duplication between this function and
+    // `tests::test_setup::assert_apply_with_dock_yaml`; this should ideally be
+    // abstracted if an appropriate abstraction presents itself.
+
+    let test_dir = test_setup::assert_create_root_dir(defn.name);
+
+    let indented_env_defn =
+        defn.env_defn
+            .lines()
+            .collect::<Vec<&str>>()
+            .join("\n    ");
+
+    let dock_file: &str = &formatdoc!{
+        "
+            organisation: 'ezanmoto'
+            project: 'dock.test'
+
+            environments:
+              {test_name}:
+                {env_defn}
+        ",
+        test_name = defn.name,
+        env_defn = indented_env_defn,
+    };
+    let dockerfile_name: &str = &format!("{}.Dockerfile", defn.name);
+
+    let fs_state = &hashmap!{
+        dockerfile_name => defn.dockerfile,
+        "dock.yaml" => dock_file,
+    };
+    test_setup::assert_write_fs_state(&test_dir, &fs_state);
+
+    let image_tagged_name =
+        format!("{}.{}:latest", test_setup::IMAGE_NAME_ROOT, defn.name);
+
+    References{
+        dir: test_dir,
+        image_tagged_name,
+    }
+}
+
+pub struct TestDefinition<'a> {
+    pub name: &'a str,
+    pub dockerfile: &'a str,
+    pub env_defn: &'a str,
 }

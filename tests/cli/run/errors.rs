@@ -9,6 +9,7 @@ use crate::docker;
 use crate::test_setup;
 use crate::test_setup::Definition;
 use super::success;
+use super::success::TestDefinition;
 
 use crate::predicates::prelude::predicate;
 use crate::predicates::prelude::predicate::str as predicate_str;
@@ -265,4 +266,36 @@ fn context_contains_absolute_path() {
     docker::assert_image_doesnt_exist(&test.image_tagged_name);
     // (E)
     docker::assert_no_containers_from_image(&test.image_tagged_name);
+}
+
+#[test]
+// Given (1) the dock file defines an environment called `<env>`
+//     AND (2) `<env>`'s Dockerfile installs a Docker client
+//     AND (3) `<env>` doesn't enable `nested_docker`
+// When `run <env> docker version` is run
+// Then (A) the command returns 1
+//     AND (B) the command STDERR contains "no such host"
+//     AND (C) the target image exists
+fn run_without_nested_docker() {
+    let test_name = "run_without_nested_docker";
+    // (1)
+    let test = success::assert_apply(&TestDefinition{
+        name: test_name,
+        // (2)
+        dockerfile: "FROM docker:19.03.8",
+        // (3)
+        env_defn: "{}",
+    });
+    docker::assert_remove_image(&test.image_tagged_name);
+    let args = &[test_name, "docker", "version"];
+
+    let cmd_result = success::run_test_cmd(test.dir, args);
+
+    cmd_result
+        // (A)
+        .code(1)
+        // (B)
+        .stderr(predicate_str::contains("no such host"));
+    // (C)
+    docker::assert_image_exists(&test.image_tagged_name);
 }
