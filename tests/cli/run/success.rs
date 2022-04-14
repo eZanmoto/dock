@@ -2,6 +2,7 @@
 // Use of this source code is governed by an MIT
 // licence that can be found in the LICENCE file.
 
+use std::env;
 use std::path::Path;
 use std::str;
 
@@ -54,8 +55,14 @@ pub fn run_test_cmd(root_test_dir: String, args: &[&str]) -> Assert {
     cmd.current_dir(root_test_dir);
     cmd.env_clear();
 
+    if let Ok(v) = env::var(DOCK_HOSTPATHS_VAR_NAME) {
+        cmd.env(DOCK_HOSTPATHS_VAR_NAME, v);
+    }
+
     cmd.assert()
 }
+
+const DOCK_HOSTPATHS_VAR_NAME: &str = "DOCK_HOSTPATHS";
 
 #[test]
 // Given (1) the dock file defines an empty environment called `<env>`
@@ -617,4 +624,47 @@ pub struct TestDefinition<'a> {
     pub name: &'a str,
     pub dockerfile: &'a str,
     pub env_defn: &'a str,
+}
+
+#[test]
+// Given (1) the dock file defines an environment called `<env>`
+//     AND (2) `<env>` mounts the project directory to `/host`
+//     AND (3) the current directory contains `test.txt`
+// When `run <env> cat /host/test.txt` is run
+// Then (A) the command is successful
+//     AND (B) the command STDERR is empty
+//     AND (C) the command STDOUT contains the contents of `test.txt`
+//     AND (D) the target image exists
+fn mount_proj_dir() {
+    let test_name = "mount_proj_dir";
+    // (1)
+    let test = test_setup::assert_apply_with_dock_yaml(
+        // (2)
+        indoc!{"
+            mounts:
+              .: /host
+        "},
+        &Definition{
+            name: test_name,
+            fs: &hashmap!{
+                // (3)
+                "test.txt" => test_name,
+            },
+            dockerfile_steps: "",
+        },
+    );
+    docker::assert_remove_image(&test.image_tagged_name);
+    let args = &[test_name, "cat", "/host/test.txt"];
+
+    let cmd_result = run_test_cmd(test.dir, args);
+
+    cmd_result
+        // (A)
+        .code(0)
+        // (B)
+        .stderr("")
+        // (C)
+        .stdout(test_name.to_owned());
+    // (D)
+    docker::assert_image_exists(&test.image_tagged_name);
 }

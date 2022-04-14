@@ -4,7 +4,9 @@
 
 use std::collections::HashMap;
 use std::env;
+use std::env::VarError;
 use std::ffi::OsStr;
+use std::ffi::OsString;
 use std::fmt::Debug;
 use std::fs as std_fs;
 use std::fs::File;
@@ -189,8 +191,9 @@ struct DockConfig {
 #[derive(Debug, Deserialize)]
 struct DockEnvironmentConfig {
     context: Option<String>,
-    enabled: Option<Vec<DockEnvironmentEnabledConfig>>,
     args: Option<Vec<String>>,
+    mounts: Option<HashMap<String, String>>,
+    enabled: Option<Vec<DockEnvironmentEnabledConfig>>,
 }
 
 #[derive(Debug, Deserialize, PartialEq)]
@@ -259,7 +262,7 @@ fn run(dock_file_name: &str, args: &ArgMatches) -> i32 {
     let target_img = format!("{}:latest", &img_name);
 
     let ok = handle_rebuild_for_run(
-        dock_dir,
+        dock_dir.clone(),
         env_name,
         &env.context,
         &target_img,
@@ -275,7 +278,7 @@ fn run(dock_file_name: &str, args: &ArgMatches) -> i32 {
         };
 
     let run_args =
-        match prepare_run_args(env, target_img, &extra_run_args) {
+        match prepare_run_args(env, target_img, &extra_run_args, &dock_dir) {
             Ok(v) => {
                 v
             },
@@ -462,6 +465,7 @@ fn prepare_run_args(
     env: &DockEnvironmentConfig,
     target_img: String,
     extra_args: &[&str],
+    dock_dir: &PathBuf,
 )
     -> Result<Vec<String>, PrepareRunArgsError>
 {
@@ -499,6 +503,54 @@ fn prepare_run_args(
         }
     }
 
+    if let Some(mounts) = &env.mounts {
+        let cur_hostpaths = hostpaths()
+            .context(GetHostpathsFailed)?;
+
+        let mut new_hostpaths = HashMap::new();
+        for (outer_path, inner_path) in mounts.iter() {
+            let mut path: String = format!(
+                "{}/{}",
+                dock_dir.display(),
+                outer_path.to_string(),
+            );
+
+            if let Some(hostpaths) = &cur_hostpaths {
+                if let Some(p) = apply_hostpath(hostpaths, &path) {
+                    path = p;
+                } else {
+                    return Err(PrepareRunArgsError::NoPathRouteOnHost{
+                        hostpaths: hostpaths.clone(),
+                        local_path: path,
+                    });
+                }
+            }
+
+            new_hostpaths.insert(path, inner_path);
+        }
+
+        for (host_path, inner_path) in &new_hostpaths {
+            let mount_spec = format!(
+                "type=bind,src={},dst={}",
+                host_path,
+                inner_path,
+            );
+            run_args.push(format!("--mount={}", mount_spec));
+        }
+
+        let rendered_hostpaths = new_hostpaths
+            .into_iter()
+            .map(|(k, v)| format!("{}:{}", k, v))
+            .collect::<Vec<String>>()
+            .join(":");
+
+        run_args.push(format!(
+            "--env={}={}",
+            DOCK_HOSTPATHS_VAR_NAME,
+            rendered_hostpaths,
+        ));
+    }
+
     run_args.push(target_img);
 
     run_args.extend(to_strings(&extra_args));
@@ -508,12 +560,13 @@ fn prepare_run_args(
 
 const DOCKER_SOCK_PATH: &str = "/var/run/docker.sock";
 
-#[allow(clippy::enum_variant_names)]
 #[derive(Debug, Snafu)]
 enum PrepareRunArgsError {
     GetUserIdFailed{source: RunCommandError},
     GetGroupIdFailed{source: RunCommandError},
     GetDockerSockMetadataFailed{source: IoError},
+    GetHostpathsFailed{source: HostpathsError},
+    NoPathRouteOnHost{hostpaths: Hostpaths, local_path: String},
 }
 
 fn to_strings(strs: &[&str]) -> Vec<String> {
@@ -564,4 +617,83 @@ where
 pub enum AssertRunError {
     RunFailed{source: IoError},
     NonZeroExit{output: Output},
+}
+
+fn hostpaths() -> Result<Option<Hostpaths>, HostpathsError> {
+    let raw_hostpaths =
+        match env::var(DOCK_HOSTPATHS_VAR_NAME) {
+            Ok(v) => {
+                v
+            },
+            Err(VarError::NotPresent) => {
+                return Ok(None)
+            },
+            Err(VarError::NotUnicode(value)) => {
+                return Err(HostpathsError::EnvVarIsNotUnicode{value});
+            },
+        };
+
+    let raw_hostpaths = raw_hostpaths.split(':').collect::<Vec<&str>>();
+
+    if raw_hostpaths.len() % 2 == 1 {
+        return Err(HostpathsError::UnmatchedHostpath{
+            hostpaths: to_strings(&raw_hostpaths),
+        })
+    }
+
+    let mut hostpaths = HashMap::new();
+    for pair in raw_hostpaths.chunks(2) {
+        if let [outer_path, inner_path] = pair {
+            hostpaths.insert(
+                (*outer_path).to_string(),
+                (*inner_path).to_string(),
+            );
+        } else {
+            // `chunks(2)` should always return slices of length 2.
+            panic!("chunk didn't have length 2: {:?}", pair);
+        }
+    }
+
+    Ok(Some(hostpaths))
+}
+
+const DOCK_HOSTPATHS_VAR_NAME: &str = "DOCK_HOSTPATHS";
+
+type Hostpaths = HashMap<String, String>;
+
+#[derive(Debug, Snafu)]
+enum HostpathsError {
+    EnvVarIsNotUnicode{value: OsString},
+    UnmatchedHostpath{hostpaths: Vec<String>},
+}
+
+/// Returns a new path where the longest possible prefix of `path` has been
+/// replaced by the corresponding "host path".
+///
+/// TODO Add an example.
+fn apply_hostpath(hostpaths: &Hostpaths, path: &str) -> Option<String> {
+    let mut longest = None;
+
+    for (host_path, local_path) in hostpaths {
+        let local_dir = local_path.to_owned() + "/";
+        if let Some(rel_path) = path.strip_prefix(&local_dir) {
+            let full_path = host_path.to_owned() + "/" + rel_path;
+
+            let update =
+                if let Some((longest_len, _)) = longest {
+                    local_dir.len() > longest_len
+                } else {
+                    true
+                };
+
+            longest =
+                if update {
+                    Some((local_dir.len(), full_path))
+                } else {
+                    None
+                };
+        }
+    }
+
+    longest.map(|(_, p)| p)
 }

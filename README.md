@@ -77,9 +77,15 @@ environments:
     args:
     - --env=PORT=8080
     - --group-add=test
+
     enabled:
     - local_user_group
     - nested_docker
+
+    # NOTE `mounts` work with "nested" Docker instances; see below for more
+    # details.
+    mounts:
+      relative/path: /inner/path
 ```
 
 * `args`: These `args` are passed to the underlying `docker run` command in the
@@ -91,6 +97,40 @@ environments:
   run inside the container is run with the user ID and group ID of the user
   running `dock`. Note that these IDs are discovered using the `id` program, and
   so, a failure may occur if the `id` program isn't found.
+* `mounts`: This section defines bind mounts, where the source paths are
+  relative to the directory containing `dock.yaml` (as opposed to being defined
+  using absolute paths). These can also allow for bind mounts in "nested" Docker
+  scenarios, where the Docker server is made available to a container by
+  enabling `nested_docker`. See the "`mounts`" section, below, for more details.
+
+### `mounts`
+
+The `mounts` section provides a shortcut for bind-mounting files and directories
+that are defined relative to `dock.yaml`. In addition, "nested" bind mounts can
+be made possible with this approach, as described in the rest of this section.
+
+With the regular operation of Docker, bind mounts are defined such that the
+source path is an absolute path on the Docker host, which is generally
+sufficient when the container is being run "directly" on the host. However, a
+container may be run in a "nested" context. For example, a CI system may define
+its build agent as a Docker container, which may want to run further Docker
+containers. A recommended approach to this nested Docker (or "Docker-in-Docker")
+setup is to, instead of installing a nested Docker server, [bind-mount the
+socket of the Docker server running on the
+host](https://jpetazzo.github.io/2015/09/03/do-not-use-docker-in-docker-for-ci/#the-socket-solution).
+
+One caveat of this approach is when using bind mounts for simplifying the Docker
+build process, as described in [Docker for the Build
+Process](https://seankelleher.ie/posts/docker_for_building/). In this scenario,
+absolute paths in the build agent container don't map to absolute paths on the
+host environment, and so, bind mounts can't be used for the innermost
+containers.
+
+`dock` defines a `DOCK_HOSTNAMES` environment variable to track what
+bind-mounts are available in a container, and can use this to map paths from
+inside containers, back to the actual paths on the host. This can allow
+bind-mounting to be utilised to any depth of container nesting, as long as all
+paths are reachable on the host.
 
 Development
 -----------
