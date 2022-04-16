@@ -40,6 +40,7 @@ use snafu::Snafu;
 mod docker;
 mod fs;
 mod rebuild;
+mod trie;
 
 use rebuild::RebuildError;
 use rebuild::RebuildWithCapturedOutputError;
