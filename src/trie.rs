@@ -34,27 +34,27 @@ impl<K: Clone + Eq + Hash, V> Trie<K, V> {
                 return Err(InsertError::EmptyKey);
             };
 
-        let mut index = 0;
+        let mut dir_index = 0;
         for k in key_components {
             let num_dirs = self.dirs.len();
 
-            let cur_dir = &mut self.dirs[index];
+            let cur_dir = &mut self.dirs[dir_index];
 
             if let Some(node) = cur_dir.get(&k) {
                 if let Node::DirIndex(i) = node {
-                    index = *i;
+                    dir_index = *i;
                 } else {
                     // TODO Add the prefix to the error context.
                     return Err(InsertError::PrefixContainsValue);
                 }
             } else {
-                index = num_dirs;
-                cur_dir.insert(k, Node::DirIndex(index));
+                dir_index = num_dirs;
+                cur_dir.insert(k, Node::DirIndex(dir_index));
                 self.dirs.push(HashMap::new());
             }
         }
 
-        let cur_dir = &mut self.dirs[index];
+        let cur_dir = &mut self.dirs[dir_index];
 
         match cur_dir.entry(last) {
             Entry::Vacant(entry) => {
