@@ -72,6 +72,35 @@ impl<K: Clone + Eq + Hash, V> Trie<K, V> {
             },
         }
     }
+
+    /// Returns the prefix of `key` that leads to a value in `self`, if one
+    /// exists, with the value found at that location; otherwise returns
+    /// `None`.
+    pub fn value_at_prefix<'a, 'b>(&'a mut self, key: &'b [K])
+        -> Option<(Vec<&'b K>, &'a V)>
+    {
+        let mut dir_index = 0;
+
+        let mut prefix = vec![];
+        for k in key {
+            prefix.push(k);
+
+            let cur_dir = &self.dirs[dir_index];
+
+            let node = cur_dir.get(&k)?;
+
+            match node {
+                Node::DirIndex(i) => {
+                    dir_index = *i;
+                },
+                Node::Value(v) => {
+                    return Some((prefix, v));
+                },
+            }
+        }
+
+        None
+    }
 }
 
 #[derive(Debug)]
@@ -165,5 +194,153 @@ mod tests {
 
         // (A)
         assert!(matches!(result, Err(InsertError::PrefixContainsValue)));
+    }
+
+    #[test]
+    // Given (1) a new `Trie`
+    // When `value_at_prefix` is called
+    // Then (A) the result is `None`
+    fn test_value_at_prefix_on_new_trie() {
+        // (1)
+        let mut t: Trie<u8, u8> = Trie::new();
+
+        let result = t.value_at_prefix(&[1, 2]);
+
+        // (A)
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    // Given (1) a `Trie` `t`
+    //     AND (2) `1` was inserted into `t` at `a/b`
+    // When `value_at_prefix` is called with an empty key
+    // Then (A) the result is `None`
+    fn test_value_at_prefix_with_empty_key() {
+        // (1)
+        let mut t = Trie::new();
+        // (2)
+        t.insert(&['a', 'b'], 1)
+            .expect("couldn't insert value");
+
+        let result = t.value_at_prefix(&[]);
+
+        // (A)
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    // Given (1) a `Trie` `t`
+    //     AND (2) `1` was inserted into `t` at `a/b`
+    // When `value_at_prefix` is called with `a` as the key
+    // Then (A) the result is `None`
+    fn test_value_at_prefix_with_no_value_at_prefix() {
+        // (1)
+        let mut t = Trie::new();
+        // (2)
+        t.insert(&['a', 'b'], 1)
+            .expect("couldn't insert value");
+
+        let result = t.value_at_prefix(&['a']);
+
+        // (A)
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    // Given (1) a `Trie` `t`
+    //     AND (2) `1` was inserted into `t` at `a/b`
+    // When `value_at_prefix` is called with `a/b` as the key
+    // Then (A) the result contains a reference to `a/b` and `1`
+    fn test_value_at_prefix_with_value_at_path() {
+        // (1)
+        let mut t = Trie::new();
+        // (2)
+        t.insert(&['a', 'b'], 1)
+            .expect("couldn't insert value");
+
+        let result = t.value_at_prefix(&['a', 'b']);
+
+        // (A)
+        assert_eq!(result, Some((vec![&'a', &'b'], &1)));
+    }
+
+    #[test]
+    // Given (1) a `Trie` `t`
+    //     AND (2) `1` was inserted into `t` at `a/b`
+    // When `value_at_prefix` is called with `a/b/c` as the key
+    // Then (A) the result contains a reference to `a/b` and `1`
+    fn test_value_at_prefix_with_value_at_prefix_of_path() {
+        // (1)
+        let mut t = Trie::new();
+        // (2)
+        t.insert(&['a', 'b'], 1)
+            .expect("couldn't insert value");
+
+        let result = t.value_at_prefix(&['a', 'b', 'c']);
+
+        // (A)
+        assert_eq!(result, Some((vec![&'a', &'b'], &1)));
+    }
+
+    #[test]
+    // Given (1) a `Trie` `t`
+    //     AND (2) `1` was inserted into `t` at `a/b`
+    // When `value_at_prefix` is called with `a/b/c/d` as the key
+    // Then (A) the result contains a reference to `a/b` and `1`
+    fn test_value_at_prefix_with_value_at_deeper_prefix_of_path() {
+        // (1)
+        let mut t = Trie::new();
+        // (2)
+        t.insert(&['a', 'b'], 1)
+            .expect("couldn't insert value");
+
+        let result = t.value_at_prefix(&['a', 'b', 'c', 'd']);
+
+        // (A)
+        assert_eq!(result, Some((vec![&'a', &'b'], &1)));
+    }
+
+    #[test]
+    // Given (1) a `Trie` `t`
+    //     AND (2) `1` was inserted into `t` at `a/x`
+    //     AND (3) `2` was inserted into `t` at `a/y`
+    // When `value_at_prefix` is called with `a/x/a` as the key
+    // Then (A) the result contains a reference to `a/x` and `1`
+    fn test_value_at_prefix_first_of_two_paths() {
+        // (1)
+        let mut t = Trie::new();
+        // (2)
+        t.insert(&['a', 'x'], 1)
+            .expect("couldn't insert value");
+        // (3)
+        t.insert(&['a', 'y'], 2)
+            .expect("couldn't insert value");
+
+        let result = t.value_at_prefix(&['a', 'x', 'a']);
+
+        // (A)
+        assert_eq!(result, Some((vec![&'a', &'x'], &1)));
+    }
+
+    #[test]
+    // Given (1) a `Trie` `t`
+    //     AND (2) `1` was inserted into `t` at `a/x`
+    //     AND (3) `2` was inserted into `t` at `a/y`
+    // When `value_at_prefix` is called with `a/y/a` as the key
+    // Then (A) the result contains a reference to `a/x` and `1`
+    fn test_value_at_prefix_second_of_two_paths() {
+        // (1)
+        let mut t = Trie::new();
+        // (2)
+        t.insert(&['a', 'x'], 1)
+            .expect("couldn't insert value");
+        // (3)
+        t.insert(&['a', 'y'], 2)
+            .expect("couldn't insert value");
+
+        let result = t.value_at_prefix(&['a', 'y', 'a']);
+
+        // (A)
+        assert_eq!(result, Some((vec![&'a', &'y'], &2)));
     }
 }
