@@ -6,6 +6,8 @@ use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 use std::hash::Hash;
 
+use snafu::Snafu;
+
 #[derive(Debug)]
 pub struct Trie<K, V> {
     dirs: Vec<Dir<K, V>>,
@@ -76,7 +78,7 @@ impl<K: Clone + Eq + Hash, V> Trie<K, V> {
     /// Returns the prefix of `key` that leads to a value in `self`, if one
     /// exists, with the value found at that location; otherwise returns
     /// `None`.
-    pub fn value_at_prefix<'a, 'b>(&'a mut self, key: &'b [K])
+    pub fn value_at_prefix<'a, 'b>(&'a self, key: &'b [K])
         -> Option<(Vec<&'b K>, &'a V)>
     {
         let mut dir_index = 0;
@@ -103,7 +105,7 @@ impl<K: Clone + Eq + Hash, V> Trie<K, V> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Snafu)]
 pub enum InsertError {
     EmptyKey,
     DirAtKey,
@@ -202,7 +204,7 @@ mod tests {
     // Then (A) the result is `None`
     fn test_value_at_prefix_on_new_trie() {
         // (1)
-        let mut t: Trie<u8, u8> = Trie::new();
+        let t: Trie<u8, u8> = Trie::new();
 
         let result = t.value_at_prefix(&[1, 2]);
 

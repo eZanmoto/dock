@@ -14,6 +14,7 @@ use std::io;
 use std::io::Error as IoError;
 use std::io::Write;
 use std::os::unix::fs::MetadataExt;
+use std::path;
 use std::path::Component;
 use std::path::Path;
 use std::path::PathBuf;
@@ -44,6 +45,8 @@ mod trie;
 
 use rebuild::RebuildError;
 use rebuild::RebuildWithCapturedOutputError;
+use trie::InsertError;
+use trie::Trie;
 
 const TAGGED_IMG_FLAG: &str = "tagged-image";
 const DOCKER_ARGS_FLAG: &str = "docker-args";
@@ -278,6 +281,18 @@ fn run(dock_file_name: &str, args: &ArgMatches) -> i32 {
             None => vec![],
         };
 
+    let dock_dir =
+        match abs_path_from_path_buf(&dock_dir) {
+            Ok(v) => {
+                v
+            },
+            Err(e) => {
+                eprintln!("{:?}", e);
+
+                return 1;
+            },
+        };
+
     let run_args =
         match prepare_run_args(env, target_img, &extra_run_args, &dock_dir) {
             Ok(v) => {
@@ -466,7 +481,7 @@ fn prepare_run_args(
     env: &DockEnvironmentConfig,
     target_img: String,
     extra_args: &[&str],
-    dock_dir: &PathBuf,
+    dock_dir: AbsPathRef,
 )
     -> Result<Vec<String>, PrepareRunArgsError>
 {
@@ -505,51 +520,10 @@ fn prepare_run_args(
     }
 
     if let Some(mounts) = &env.mounts {
-        let cur_hostpaths = hostpaths()
-            .context(GetHostpathsFailed)?;
+        let args = prepare_run_mount_args(dock_dir, mounts)
+            .context(PrepareRunMountArgsFailed)?;
 
-        let mut new_hostpaths = HashMap::new();
-        for (outer_path, inner_path) in mounts.iter() {
-            let mut path: String = format!(
-                "{}/{}",
-                dock_dir.display(),
-                outer_path.to_string(),
-            );
-
-            if let Some(hostpaths) = &cur_hostpaths {
-                if let Some(p) = apply_hostpath(hostpaths, &path) {
-                    path = p;
-                } else {
-                    return Err(PrepareRunArgsError::NoPathRouteOnHost{
-                        hostpaths: hostpaths.clone(),
-                        local_path: path,
-                    });
-                }
-            }
-
-            new_hostpaths.insert(path, inner_path);
-        }
-
-        for (host_path, inner_path) in &new_hostpaths {
-            let mount_spec = format!(
-                "type=bind,src={},dst={}",
-                host_path,
-                inner_path,
-            );
-            run_args.push(format!("--mount={}", mount_spec));
-        }
-
-        let rendered_hostpaths = new_hostpaths
-            .into_iter()
-            .map(|(k, v)| format!("{}:{}", k, v))
-            .collect::<Vec<String>>()
-            .join(":");
-
-        run_args.push(format!(
-            "--env={}={}",
-            DOCK_HOSTPATHS_VAR_NAME,
-            rendered_hostpaths,
-        ));
+        run_args.extend(args);
     }
 
     run_args.push(target_img);
@@ -561,13 +535,13 @@ fn prepare_run_args(
 
 const DOCKER_SOCK_PATH: &str = "/var/run/docker.sock";
 
+#[allow(clippy::enum_variant_names)]
 #[derive(Debug, Snafu)]
 enum PrepareRunArgsError {
     GetUserIdFailed{source: RunCommandError},
     GetGroupIdFailed{source: RunCommandError},
     GetDockerSockMetadataFailed{source: IoError},
-    GetHostpathsFailed{source: HostpathsError},
-    NoPathRouteOnHost{hostpaths: Hostpaths, local_path: String},
+    PrepareRunMountArgsFailed{source: PrepareRunMountArgsError},
 }
 
 fn to_strings(strs: &[&str]) -> Vec<String> {
@@ -620,6 +594,84 @@ pub enum AssertRunError {
     NonZeroExit{output: Output},
 }
 
+fn prepare_run_mount_args(
+    dock_dir: AbsPathRef,
+    mounts: &HashMap<String, String>,
+)
+    -> Result<Vec<String>, PrepareRunMountArgsError>
+{
+    let cur_hostpaths = hostpaths()
+        .context(GetHostpathsFailed)?;
+
+    let mut new_hostpaths: HashMap<String, &String> = HashMap::new();
+    for (raw_rel_outer_path, raw_inner_path) in mounts.iter() {
+        let rel_outer_path = parse_rel_path(raw_rel_outer_path)
+            .context(ParseConfigOuterPathFailed)?;
+
+        let mut path = dock_dir.to_owned();
+        abs_path_extend(&mut path, rel_outer_path);
+
+        if let Some(hostpaths) = &cur_hostpaths {
+            if let Some(p) = apply_hostpath(hostpaths, &path) {
+                path = p;
+            } else {
+                return Err(PrepareRunMountArgsError::NoPathRouteOnHost{
+                    // TODO Add `hostpaths` to the error context. This ideally
+                    // requires `&Trie` to implement `Clone` so that a new,
+                    // owned copy of `hostpaths` can be added to the error.
+                    attempted_path: path,
+                });
+            }
+        }
+
+        let host_path =
+            if let Some(s) = abs_path_display(&path) {
+                s
+            } else {
+                return Err(PrepareRunMountArgsError::DisplayHostPathFailed);
+            };
+
+        new_hostpaths.insert(host_path, raw_inner_path);
+    }
+
+    let mut args = vec![];
+
+    for (host_path, inner_path) in &new_hostpaths {
+        let mount_spec = format!(
+            "type=bind,src={},dst={}",
+            host_path,
+            inner_path,
+        );
+        args.push(format!("--mount={}", mount_spec));
+    }
+
+    let rendered_hostpaths = new_hostpaths
+        .into_iter()
+        .map(|(k, v)| format!("{}:{}", k, v))
+        .collect::<Vec<String>>()
+        .join(":");
+
+    args.push(format!(
+        "--env={}={}",
+        DOCK_HOSTPATHS_VAR_NAME,
+        rendered_hostpaths,
+    ));
+
+    Ok(args)
+}
+
+#[derive(Debug, Snafu)]
+enum PrepareRunMountArgsError {
+    ParseConfigOuterPathFailed{source: NewRelPathError},
+    GetHostpathsFailed{source: HostpathsError},
+    NoPathRouteOnHost{attempted_path: AbsPath},
+    DisplayHostPathFailed,
+}
+
+const DOCK_HOSTPATHS_VAR_NAME: &str = "DOCK_HOSTPATHS";
+
+type Hostpaths = Trie<OsString, RelPath>;
+
 fn hostpaths() -> Result<Option<Hostpaths>, HostpathsError> {
     let raw_hostpaths =
         match env::var(DOCK_HOSTPATHS_VAR_NAME) {
@@ -634,7 +686,7 @@ fn hostpaths() -> Result<Option<Hostpaths>, HostpathsError> {
             },
         };
 
-    let raw_hostpaths = raw_hostpaths.split(':').collect::<Vec<&str>>();
+    let raw_hostpaths: Vec<&str> = raw_hostpaths.split(':').collect();
 
     if raw_hostpaths.len() % 2 == 1 {
         return Err(HostpathsError::UnmatchedHostpath{
@@ -642,13 +694,17 @@ fn hostpaths() -> Result<Option<Hostpaths>, HostpathsError> {
         })
     }
 
-    let mut hostpaths = HashMap::new();
+    let mut hostpaths = Trie::new();
     for pair in raw_hostpaths.chunks(2) {
         if let [outer_path, inner_path] = pair {
-            hostpaths.insert(
-                (*outer_path).to_string(),
-                (*inner_path).to_string(),
-            );
+            let outer_path = parse_abs_path(outer_path)
+                .context(ParseOuterPathFailed)?;
+
+            let inner_path = parse_abs_path(inner_path)
+                .context(ParseInnerPathFailed)?;
+
+            hostpaths.insert(&inner_path, outer_path)
+                .context(AddHostpathFailed)?;
         } else {
             // `chunks(2)` should always return slices of length 2.
             panic!("chunk didn't have length 2: {:?}", pair);
@@ -658,43 +714,135 @@ fn hostpaths() -> Result<Option<Hostpaths>, HostpathsError> {
     Ok(Some(hostpaths))
 }
 
-const DOCK_HOSTPATHS_VAR_NAME: &str = "DOCK_HOSTPATHS";
-
-type Hostpaths = HashMap<String, String>;
-
 #[derive(Debug, Snafu)]
 enum HostpathsError {
     EnvVarIsNotUnicode{value: OsString},
     UnmatchedHostpath{hostpaths: Vec<String>},
+    ParseOuterPathFailed{source: NewAbsPathError},
+    ParseInnerPathFailed{source: NewAbsPathError},
+    AddHostpathFailed{source: InsertError},
 }
 
-/// Returns a new path where the longest possible prefix of `path` has been
-/// replaced by the corresponding "host path".
-///
-/// TODO Add an example.
-fn apply_hostpath(hostpaths: &Hostpaths, path: &str) -> Option<String> {
-    let mut longest = None;
+fn apply_hostpath(hostpaths: &Hostpaths, path: AbsPathRef)
+    -> Option<AbsPath>
+{
+    let (prefix, host_dir) = hostpaths.value_at_prefix(&path)?;
 
-    for (host_path, local_path) in hostpaths {
-        let local_dir = local_path.to_owned() + "/";
-        if let Some(rel_path) = path.strip_prefix(&local_dir) {
-            let full_path = host_path.to_owned() + "/" + rel_path;
+    let rel_path: Vec<OsString> =
+        path
+            .iter()
+            .skip(prefix.len())
+            .cloned()
+            .collect();
 
-            let update =
-                if let Some((longest_len, _)) = longest {
-                    local_dir.len() > longest_len
-                } else {
-                    true
-                };
+    let mut host_path = host_dir.clone();
+    host_path.extend(rel_path);
 
-            longest =
-                if update {
-                    Some((local_dir.len(), full_path))
-                } else {
-                    None
-                };
+    Some(host_path)
+}
+
+type AbsPath = Vec<OsString>;
+
+/// Returns the `AbsPath` parsed from `p`. `p` must begin with a "root
+/// directory" component.
+fn parse_abs_path(p: &str) -> Result<AbsPath, NewAbsPathError> {
+    abs_path_from_path_buf(&Path::new(p).to_path_buf())
+}
+
+#[derive(Debug, Snafu)]
+enum NewAbsPathError {
+    EmptyAbsPath,
+    // TODO We would ideally add the path component as a field on
+    // `NoRootDirPrefix` and `SpecialComponentInAbsPath` to track the component
+    // that was unexpected. However, the current version of `Snafu` being used
+    // ["cannot use lifetime-parameterized errors as
+    // sources"](https://github.com/shepmaster/snafu/issues/99), so we omit
+    // this field for now.
+    NoRootDirPrefix,
+    SpecialComponentInAbsPath,
+}
+
+fn abs_path_from_path_buf(p: &PathBuf) -> Result<AbsPath, NewAbsPathError> {
+    let mut components = p.components();
+
+    if let Some(component) = components.next() {
+        if component != Component::RootDir {
+            return Err(NewAbsPathError::NoRootDirPrefix);
+        }
+    } else {
+        return Err(NewAbsPathError::EmptyAbsPath);
+    }
+
+    let mut abs_path = vec![];
+    for component in components {
+        if let Component::Normal(c) = component {
+            abs_path.push(c.to_os_string());
+        } else {
+            return Err(NewAbsPathError::SpecialComponentInAbsPath);
         }
     }
 
-    longest.map(|(_, p)| p)
+    Ok(abs_path)
+}
+
+// TODO `abs_path_display` should ideally return an error instead of `None` if
+// there is a problem rendering a component of the path.
+fn abs_path_display(abs_path: AbsPathRef) -> Option<String> {
+    if abs_path.is_empty() {
+        return Some(path::MAIN_SEPARATOR.to_string());
+    }
+
+    let mut string = String::new();
+    for component in abs_path {
+        if let Some(s) = component.to_str() {
+            string += &path::MAIN_SEPARATOR.to_string();
+            string += s;
+        } else {
+            return None;
+        }
+    }
+
+    Some(string)
+}
+
+fn abs_path_extend(abs_path: &mut AbsPath, rel_path: RelPath) {
+    abs_path.extend(rel_path)
+}
+
+type AbsPathRef<'a> = &'a [OsString];
+
+type RelPath = Vec<OsString>;
+
+/// Returns the `RelPath` parsed from `p`. `p` must begin with a "current
+/// directory" component (i.e. `.`).
+fn parse_rel_path(p: &str) -> Result<RelPath, NewRelPathError> {
+    let mut components = Path::new(p).components();
+
+    if let Some(component) = components.next() {
+        if component != Component::CurDir {
+            return Err(NewRelPathError::NoCurDirPrefix);
+        }
+    } else {
+        return Err(NewRelPathError::EmptyRelPath);
+    }
+
+    let mut rel_path = vec![];
+    for component in components {
+        if let Component::Normal(c) = component {
+            rel_path.push(c.to_os_string());
+        } else {
+            return Err(NewRelPathError::SpecialComponentInRelPath);
+        }
+    }
+
+    Ok(rel_path)
+}
+
+#[derive(Debug, Snafu)]
+enum NewRelPathError {
+    EmptyRelPath,
+    // TODO See `NewAbsPathError` for more details on adding `Component` fields
+    // in error variants.
+    NoCurDirPrefix,
+    SpecialComponentInRelPath,
 }
