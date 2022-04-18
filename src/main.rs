@@ -520,7 +520,15 @@ fn prepare_run_args(
     }
 
     if let Some(mounts) = &env.mounts {
-        let args = prepare_run_mount_args(dock_dir, mounts)
+        let mut parsed_mounts = vec![];
+        for (raw_rel_outer_path, raw_inner_path) in mounts.iter() {
+            let rel_outer_path = parse_rel_path(raw_rel_outer_path)
+                .context(ParseConfigOuterPathFailed)?;
+
+            parsed_mounts.push((rel_outer_path, raw_inner_path));
+        }
+
+        let args = prepare_run_mount_args(dock_dir, &parsed_mounts)
             .context(PrepareRunMountArgsFailed)?;
 
         run_args.extend(args);
@@ -541,6 +549,7 @@ enum PrepareRunArgsError {
     GetUserIdFailed{source: RunCommandError},
     GetGroupIdFailed{source: RunCommandError},
     GetDockerSockMetadataFailed{source: IoError},
+    ParseConfigOuterPathFailed{source: NewRelPathError},
     PrepareRunMountArgsFailed{source: PrepareRunMountArgsError},
 }
 
@@ -594,22 +603,16 @@ pub enum AssertRunError {
     NonZeroExit{output: Output},
 }
 
-fn prepare_run_mount_args(
-    dock_dir: AbsPathRef,
-    mounts: &HashMap<String, String>,
-)
+fn prepare_run_mount_args(dock_dir: AbsPathRef, mounts: &[(RelPath, &String)])
     -> Result<Vec<String>, PrepareRunMountArgsError>
 {
     let cur_hostpaths = hostpaths()
         .context(GetHostpathsFailed)?;
 
     let mut new_hostpaths = vec![];
-    for (raw_rel_outer_path, raw_inner_path) in mounts.iter() {
-        let rel_outer_path = parse_rel_path(raw_rel_outer_path)
-            .context(ParseConfigOuterPathFailed)?;
-
+    for (rel_outer_path, raw_inner_path) in mounts {
         let mut path = dock_dir.to_owned();
-        abs_path_extend(&mut path, rel_outer_path);
+        abs_path_extend(&mut path, rel_outer_path.to_vec());
 
         if let Some(hostpaths) = &cur_hostpaths {
             if let Some(p) = apply_hostpath(hostpaths, &path) {
@@ -662,7 +665,6 @@ fn prepare_run_mount_args(
 
 #[derive(Debug, Snafu)]
 enum PrepareRunMountArgsError {
-    ParseConfigOuterPathFailed{source: NewRelPathError},
     GetHostpathsFailed{source: HostpathsError},
     NoPathRouteOnHost{attempted_path: AbsPath},
     DisplayHostPathFailed,
