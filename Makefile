@@ -9,8 +9,8 @@ test_img_namespace:=ezanmoto/dock.test
 
 .PHONY: check
 check: \
-	check_intg \
-	check_lint
+		check_intg \
+		check_lint
 
 # We pull base Docker images required by the tests, even though they'd
 # automatically be pulled during builds, in order to make the output more
