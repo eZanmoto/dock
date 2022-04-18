@@ -33,7 +33,9 @@ where
 
 #[derive(Debug, Snafu)]
 pub enum AssertRunError {
+    #[snafu(display("Couldn't run a new `docker` process: {}", source))]
     RunFailed{source: IoError},
+    #[snafu(display("The `docker` process returned non-zero: {:?}", output))]
     NonZeroExit{output: Output},
 }
 
@@ -61,7 +63,9 @@ where
 
 #[derive(Debug, Snafu)]
 pub enum StreamRunError {
+    #[snafu(display("Couldn't spawn a new `docker` process: {}", source))]
     SpawnFailed{source: IoError},
+    #[snafu(display("Couldn't wait for the `docker` process: {}", source))]
     WaitFailed{source: IoError},
 }
 
@@ -84,6 +88,8 @@ pub fn get_image_ids(repository: &str)
 
 #[derive(Debug, Snafu)]
 pub enum GetImageIdsError {
+    #[snafu(display("Couldn't get Docker image IDs: {}", source))]
     ViewImagesFailed{source: AssertRunError},
+    #[snafu(display("Couldn't read line of `docker` STDOUT: {}", source))]
     ReadStdoutLineFailed{source: IoError},
 }

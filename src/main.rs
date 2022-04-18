@@ -2,6 +2,7 @@
 // Use of this source code is governed by an MIT
 // licence that can be found in the LICENCE file.
 
+use std::char;
 use std::collections::HashMap;
 use std::env;
 use std::env::VarError;
@@ -385,7 +386,9 @@ fn new_docker_rebuild_input(
                 v
             } else {
                 return Err(
-                    NewDockerRebuildInputError::InvalidUtf8InContextPath
+                    NewDockerRebuildInputError::InvalidUtf8InContextPath{
+                        path: context_path,
+                    }
                 )
             };
 
@@ -394,7 +397,9 @@ fn new_docker_rebuild_input(
                 v
             } else {
                 return Err(
-                    NewDockerRebuildInputError::InvalidUtf8InDockerfilePath
+                    NewDockerRebuildInputError::InvalidUtf8InDockerfilePath{
+                        path: dockerfile_path.to_path_buf(),
+                    }
                 )
             };
 
@@ -407,7 +412,7 @@ fn new_docker_rebuild_input(
         })
     } else {
         let dockerfile = File::open(&dockerfile_path)
-            .context(OpenDockerfileFailed)?;
+            .context(OpenDockerfileFailed{path: dockerfile_path})?;
 
         Ok(DockerRebuildInput{
             dockerfile: Some(dockerfile),
@@ -423,9 +428,22 @@ struct DockerRebuildInput {
 
 #[derive(Debug, Snafu)]
 pub enum NewDockerRebuildInputError {
-    InvalidUtf8InContextPath,
-    InvalidUtf8InDockerfilePath,
-    OpenDockerfileFailed{source: IoError},
+    #[snafu(display(
+        "The path to the Docker context ('{}') contained invalid UTF-8",
+        path.display(),
+    ))]
+    InvalidUtf8InContextPath{path: PathBuf},
+    #[snafu(display(
+        "The path to the Dockerfile ('{}') contained invalid UTF-8",
+        path.display(),
+    ))]
+    InvalidUtf8InDockerfilePath{path: PathBuf},
+    #[snafu(display(
+        "Couldn't open the Dockerfile '{}': {}",
+        path.display(),
+        source,
+    ))]
+    OpenDockerfileFailed{source: IoError, path: PathBuf},
 }
 
 // `handle_run_rebuild_result` returns `true` if `r` indicates a successful
@@ -523,7 +541,10 @@ fn prepare_run_args(
         let mut parsed_mounts = vec![];
         for (raw_rel_outer_path, raw_inner_path) in mounts.iter() {
             let rel_outer_path = parse_rel_path(raw_rel_outer_path)
-                .context(ParseConfigOuterPathFailed)?;
+                .context(ParseConfigOuterPathFailed{
+                    raw_rel_outer_path,
+                    raw_inner_path,
+                })?;
 
             parsed_mounts.push((rel_outer_path, raw_inner_path));
         }
@@ -546,10 +567,27 @@ const DOCKER_SOCK_PATH: &str = "/var/run/docker.sock";
 #[allow(clippy::enum_variant_names)]
 #[derive(Debug, Snafu)]
 enum PrepareRunArgsError {
+    #[snafu(display("Couldn't get user ID for the active user: {}", source))]
     GetUserIdFailed{source: RunCommandError},
+    #[snafu(display("Couldn't get group ID for the active user: {}", source))]
     GetGroupIdFailed{source: RunCommandError},
+    #[snafu(display("Couldn't get metadata for Docker socket: {}", source))]
     GetDockerSockMetadataFailed{source: IoError},
-    ParseConfigOuterPathFailed{source: NewRelPathError},
+    #[snafu(display(
+        "Couldn't parse `mount` configuration for '{}' -> '{}' mapping: {}",
+        source,
+        raw_rel_outer_path,
+        raw_inner_path,
+    ))]
+    ParseConfigOuterPathFailed{
+        source: NewRelPathError,
+        raw_rel_outer_path: String,
+        raw_inner_path: String,
+    },
+    #[snafu(display(
+        "Couldn't prepare \"mount\" arguments for `docker run`: {}",
+        source,
+    ))]
     PrepareRunMountArgsFailed{source: PrepareRunMountArgsError},
 }
 
@@ -575,7 +613,9 @@ fn run_command(prog: &str, args: &[&str]) -> Result<String, RunCommandError> {
 
 #[derive(Debug, Snafu)]
 enum RunCommandError {
+    #[snafu(display("Couldn't run the command: {}", source))]
     AssertRunFailed{source: AssertRunError},
+    #[snafu(display("Couldn't convert STDOUT to UTF-8: {}", source))]
     ConvertStdoutToUtf8Failed{source: Utf8Error, stdout_bytes: Vec<u8>},
 }
 
@@ -599,7 +639,9 @@ where
 
 #[derive(Debug, Snafu)]
 pub enum AssertRunError {
+    #[snafu(display("Couldn't run the command: {}", source))]
     RunFailed{source: IoError},
+    #[snafu(display("Command exited with a non-zero status: {:?}", output))]
     NonZeroExit{output: Output},
 }
 
@@ -631,7 +673,10 @@ fn prepare_run_mount_args(dock_dir: AbsPathRef, mounts: &[(RelPath, &String)])
             if let Some(s) = abs_path_display(&path) {
                 s
             } else {
-                return Err(PrepareRunMountArgsError::DisplayHostPathFailed);
+                return Err(PrepareRunMountArgsError::RenderHostPathFailed{
+                    path,
+                    inner_path: (*raw_inner_path).to_string(),
+                });
             };
 
         new_hostpaths.push((host_path, raw_inner_path));
@@ -665,9 +710,24 @@ fn prepare_run_mount_args(dock_dir: AbsPathRef, mounts: &[(RelPath, &String)])
 
 #[derive(Debug, Snafu)]
 enum PrepareRunMountArgsError {
+    #[snafu(display("Couldn't get hostpaths: {}", source))]
     GetHostpathsFailed{source: HostpathsError},
-    NoPathRouteOnHost{attempted_path: AbsPath},
-    DisplayHostPathFailed,
+    #[snafu(display(
+        "No route to the path '{}' was found on the host",
+        abs_path_display_lossy(attempted_path),
+    ))]
+    NoPathRouteOnHost{
+        attempted_path: AbsPath,
+    },
+    #[snafu(display(
+        "Couldn't render the hostpath mapping to '{}' (lossy rendering: '{}')",
+        inner_path,
+        abs_path_display_lossy(path),
+    ))]
+    RenderHostPathFailed{
+        path: AbsPath,
+        inner_path: String,
+    },
 }
 
 const DOCK_HOSTPATHS_VAR_NAME: &str = "DOCK_HOSTPATHS";
@@ -699,14 +759,42 @@ fn hostpaths() -> Result<Option<Hostpaths>, HostpathsError> {
     let mut hostpaths = Trie::new();
     for pair in raw_hostpaths.chunks(2) {
         if let [outer_path, inner_path] = pair {
-            let outer_path = parse_abs_path(outer_path)
-                .context(ParseOuterPathFailed)?;
+            let abs_outer_path = parse_abs_path(outer_path)
+                .context(ParseOuterPathFailed{
+                    outer_path: (*outer_path).to_string(),
+                    inner_path: (*inner_path).to_string(),
+                })?;
 
-            let inner_path = parse_abs_path(inner_path)
-                .context(ParseInnerPathFailed)?;
+            let abs_inner_path = parse_abs_path(inner_path)
+                .context(ParseInnerPathFailed{
+                    outer_path: (*outer_path).to_string(),
+                    inner_path: (*inner_path).to_string(),
+                })?;
 
-            hostpaths.insert(&inner_path, outer_path)
-                .context(AddHostpathFailed)?;
+            match hostpaths.insert(&abs_inner_path, abs_outer_path) {
+                Ok(()) => {},
+                Err(err) => {
+                    let e =
+                        match err {
+                            InsertError::EmptyKey =>
+                                HostpathsError::EmptyInnerPath{
+                                    outer_path: (*outer_path).to_string(),
+                                },
+                            InsertError::PrefixContainsValue =>
+                                HostpathsError::InnerPathAncestorHasMapping{
+                                    outer_path: (*outer_path).to_string(),
+                                    inner_path: (*inner_path).to_string(),
+                                },
+                            InsertError::DirAtKey =>
+                                HostpathsError::InnerPathDescendentHasMapping{
+                                    outer_path: (*outer_path).to_string(),
+                                    inner_path: (*inner_path).to_string(),
+                                },
+                        };
+
+                    return Err(e);
+                },
+            }
         } else {
             // `chunks(2)` should always return slices of length 2.
             panic!("chunk didn't have length 2: {:?}", pair);
@@ -718,11 +806,52 @@ fn hostpaths() -> Result<Option<Hostpaths>, HostpathsError> {
 
 #[derive(Debug, Snafu)]
 enum HostpathsError {
+    #[snafu(display(
+        "The value of '${}' isn't unicode",
+        DOCK_HOSTPATHS_VAR_NAME,
+    ))]
     EnvVarIsNotUnicode{value: OsString},
+    #[snafu(display(
+        "'${}' has an unmatched hostpath",
+        DOCK_HOSTPATHS_VAR_NAME,
+    ))]
     UnmatchedHostpath{hostpaths: Vec<String>},
-    ParseOuterPathFailed{source: NewAbsPathError},
-    ParseInnerPathFailed{source: NewAbsPathError},
-    AddHostpathFailed{source: InsertError},
+    #[snafu(display(
+        "Couldn't parse '{}' as an absolute path (mapped to '{}'): {}",
+        inner_path,
+        outer_path,
+        source,
+    ))]
+    ParseOuterPathFailed{
+        source: NewAbsPathError,
+        outer_path: String,
+        inner_path: String,
+    },
+    #[snafu(display(
+        "Couldn't parse '{}' as an absolute path (mapped to '{}'): {}",
+        inner_path,
+        outer_path,
+        source,
+    ))]
+    ParseInnerPathFailed{
+        source: NewAbsPathError,
+        outer_path: String,
+        inner_path: String,
+    },
+    #[snafu(display("The path '{}' maps to an empty path", outer_path))]
+    EmptyInnerPath{outer_path: String},
+    #[snafu(display(
+        "A hostname maps to an ancestor of '{}' (which is mapped-to by '{}')",
+        inner_path,
+        outer_path,
+    ))]
+    InnerPathAncestorHasMapping{outer_path: String, inner_path: String},
+    #[snafu(display(
+        "A hostname maps to a descendant of '{}' (which is mapped-to by '{}')",
+        inner_path,
+        outer_path,
+    ))]
+    InnerPathDescendentHasMapping{outer_path: String, inner_path: String},
 }
 
 fn apply_hostpath(hostpaths: &Hostpaths, path: AbsPathRef)
@@ -753,6 +882,7 @@ fn parse_abs_path(p: &str) -> Result<AbsPath, NewAbsPathError> {
 
 #[derive(Debug, Snafu)]
 enum NewAbsPathError {
+    #[snafu(display("The absolute path was empty"))]
     EmptyAbsPath,
     // TODO We would ideally add the path component as a field on
     // `NoRootDirPrefix` and `SpecialComponentInAbsPath` to track the component
@@ -760,7 +890,11 @@ enum NewAbsPathError {
     // ["cannot use lifetime-parameterized errors as
     // sources"](https://github.com/shepmaster/snafu/issues/99), so we omit
     // this field for now.
+    #[snafu(display("The absolute path didn't start with `/`"))]
     NoRootDirPrefix,
+    #[snafu(display(
+        "The absolute path contained a special component, such as `.` or `..`"
+    ))]
     SpecialComponentInAbsPath,
 }
 
@@ -807,6 +941,24 @@ fn abs_path_display(abs_path: AbsPathRef) -> Option<String> {
     Some(string)
 }
 
+fn abs_path_display_lossy(abs_path: AbsPathRef) -> String {
+    if abs_path.is_empty() {
+        return path::MAIN_SEPARATOR.to_string();
+    }
+
+    let mut string = String::new();
+    for component in abs_path {
+        string += &path::MAIN_SEPARATOR.to_string();
+        if let Some(s) = component.to_str() {
+            string += s;
+        } else {
+            string += &char::REPLACEMENT_CHARACTER.to_string();
+        }
+    }
+
+    string
+}
+
 fn abs_path_extend(abs_path: &mut AbsPath, rel_path: RelPath) {
     abs_path.extend(rel_path)
 }
@@ -842,9 +994,14 @@ fn parse_rel_path(p: &str) -> Result<RelPath, NewRelPathError> {
 
 #[derive(Debug, Snafu)]
 enum NewRelPathError {
+    #[snafu(display("The relative path was empty"))]
     EmptyRelPath,
     // TODO See `NewAbsPathError` for more details on adding `Component` fields
     // in error variants.
+    #[snafu(display("The relative path didn't start with `.`"))]
     NoCurDirPrefix,
+    #[snafu(display(
+        "The relative path contained a special component, such as `.` or `..`"
+    ))]
     SpecialComponentInRelPath,
 }

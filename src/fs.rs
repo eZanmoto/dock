@@ -36,6 +36,11 @@ pub fn find_and_open_file(start: &Path, file_name: &str)
 
 #[derive(Debug, Snafu)]
 pub enum FindAndOpenFileError {
+    #[snafu(display(
+        "Couldn't read the first matching file that was found at '{}': {}",
+        path.display(),
+        source,
+    ))]
     ReadFailed{source: IoError, path: PathBuf},
 }
 

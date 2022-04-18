@@ -50,6 +50,7 @@ where
             [id] => Some(id.clone()),
             _ => return Err(RebuildError::MultipleImageIdsBeforeBuild{
                 ids: img_ids,
+                repo: target_img.to_string(),
             }),
         };
 
@@ -87,10 +88,14 @@ where
             Ok(build_result)
         },
         [] => {
-            Err(RebuildError::NoImageIdsAfterBuild)
+            let repo = target_img.to_string();
+
+            Err(RebuildError::NoImageIdsAfterBuild{repo})
         },
         _ => {
-            Err(RebuildError::MultipleImageIdsAfterBuild{ids: img_ids})
+            let repo = target_img.to_string();
+
+            Err(RebuildError::MultipleImageIdsAfterBuild{ids: img_ids, repo})
         },
     }
 }
@@ -101,17 +106,35 @@ pub enum RebuildError<T, E>
 where
     E: Error + 'static
 {
+    #[snafu(display("Couldn't get Docker image IDs pre-build: {}", source))]
     GetImageIdsBeforeBuildFailed{source: GetImageIdsError},
+    #[snafu(display("Couldn't get Docker image IDs post-build: {}", source))]
     GetImageIdsAfterBuildFailed{source: GetImageIdsError},
+    #[snafu(display("Couldn't build a new Docker image: {}", source))]
     BuildNewImageFailed{source: E},
+    #[snafu(display("Couldn't remove the old Docker image: {}", source))]
     RemoveOldImageFailed{source: AssertRunError, build_result: T},
 
     // NOTE The following are considered "developer errors" - they aren't
     // expected to happen, and if they do, then this may indicate that tighter
     // handling needs to be performed when retrieving image IDs.
-    MultipleImageIdsBeforeBuild{ids: Vec<String>},
-    NoImageIdsAfterBuild,
-    MultipleImageIdsAfterBuild{ids: Vec<String>},
+    #[snafu(display(
+        "(Dev Err) Multiple Docker images for '{}' were found pre-build: {:?}",
+        repo,
+        ids,
+    ))]
+    MultipleImageIdsBeforeBuild{ids: Vec<String>, repo: String},
+    #[snafu(display(
+        "(Dev Err) No Docker images for '{}' were found post-build",
+        repo,
+    ))]
+    NoImageIdsAfterBuild{repo: String},
+    #[snafu(display(
+        "(Dev Err) Multiple Docker images for '{}' found post-build: {:?}",
+        repo,
+        ids,
+    ))]
+    MultipleImageIdsAfterBuild{ids: Vec<String>, repo: String},
 }
 
 pub fn rebuild_with_captured_output(
@@ -168,7 +191,10 @@ pub fn rebuild_with_captured_output(
 #[allow(clippy::pub_enum_variant_names)]
 #[derive(Debug, Snafu)]
 pub enum RebuildWithCapturedOutputError {
+    #[snafu(display("Couldn't spawn `docker` with piped output: {}", source))]
     PipedSpawnFailed{source: IoError},
+    #[snafu(display("Couldn't pipe Dockerfile to `docker` STDIN: {}", source))]
     PipeDockerfileFailed{source: IoError},
+    #[snafu(display("Couldn't wait for `docker`: {}", source))]
     PipedWaitFailed{source: IoError},
 }

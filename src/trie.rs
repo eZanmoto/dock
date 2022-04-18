@@ -107,8 +107,11 @@ impl<K: Clone + Eq + Hash, V> Trie<K, V> {
 
 #[derive(Debug, Snafu)]
 pub enum InsertError {
+    #[snafu(display("The key was empty"))]
     EmptyKey,
+    #[snafu(display("There was a Trie \"directory\" at the key"))]
     DirAtKey,
+    #[snafu(display("A value was encountered at a prefix of the key"))]
     PrefixContainsValue,
 }
 
