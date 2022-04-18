@@ -603,7 +603,7 @@ fn prepare_run_mount_args(
     let cur_hostpaths = hostpaths()
         .context(GetHostpathsFailed)?;
 
-    let mut new_hostpaths: HashMap<String, &String> = HashMap::new();
+    let mut new_hostpaths = vec![];
     for (raw_rel_outer_path, raw_inner_path) in mounts.iter() {
         let rel_outer_path = parse_rel_path(raw_rel_outer_path)
             .context(ParseConfigOuterPathFailed)?;
@@ -631,7 +631,7 @@ fn prepare_run_mount_args(
                 return Err(PrepareRunMountArgsError::DisplayHostPathFailed);
             };
 
-        new_hostpaths.insert(host_path, raw_inner_path);
+        new_hostpaths.push((host_path, raw_inner_path));
     }
 
     let mut args = vec![];
@@ -647,7 +647,7 @@ fn prepare_run_mount_args(
 
     let rendered_hostpaths = new_hostpaths
         .into_iter()
-        .map(|(k, v)| format!("{}:{}", k, v))
+        .map(|(hp, ip)| format!("{}:{}", hp, ip))
         .collect::<Vec<String>>()
         .join(":");
 
