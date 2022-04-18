@@ -193,11 +193,13 @@ struct DockConfig {
     environments: HashMap<String, DockEnvironmentConfig>
 }
 
+// TODO Consider whether to automatically deserialise `PathBuf`s using `serde`,
+// or to read them as `String`s and parse them directly.
 #[derive(Debug, Deserialize)]
 struct DockEnvironmentConfig {
-    context: Option<String>,
+    context: Option<PathBuf>,
     args: Option<Vec<String>>,
-    mounts: Option<HashMap<String, String>>,
+    mounts: Option<HashMap<PathBuf, PathBuf>>,
     enabled: Option<Vec<DockEnvironmentEnabledConfig>>,
 }
 
@@ -321,19 +323,16 @@ fn run(dock_file_name: &str, args: &ArgMatches) -> i32 {
 fn handle_rebuild_for_run(
     dock_dir: PathBuf,
     env_name: &str,
-    env_context: &Option<String>,
+    env_context: &Option<PathBuf>,
     target_img: &str,
 ) -> bool {
-    let mut maybe_context_sub_path = None;
-    if let Some(raw_context_sub_path) = env_context {
-        let context_sub_path = Path::new(raw_context_sub_path);
+    if let Some(context_sub_path) = env_context {
         if path_contains_invalid_component(context_sub_path) {
             eprintln!(
                 "context path must be relative, and can't contain traversal",
             );
             return false;
         }
-        maybe_context_sub_path = Some(context_sub_path)
     }
 
     let mut dockerfile_path = dock_dir.clone();
@@ -342,7 +341,7 @@ fn handle_rebuild_for_run(
     let docker_rebuild_input_result = new_docker_rebuild_input(
         dock_dir,
         &dockerfile_path.as_path(),
-        maybe_context_sub_path,
+        env_context,
     );
     let docker_rebuild_input =
         match docker_rebuild_input_result {
@@ -374,7 +373,7 @@ fn handle_rebuild_for_run(
 fn new_docker_rebuild_input(
     dock_dir: PathBuf,
     dockerfile_path: &Path,
-    maybe_context_sub_path: Option<&Path>,
+    maybe_context_sub_path: &Option<PathBuf>,
 )
     -> Result<DockerRebuildInput, NewDockerRebuildInputError>
 {
@@ -484,7 +483,7 @@ fn handle_run_rebuild_result(
 
 // TODO Consider returning the invalid component to support clearer error
 // messages.
-fn path_contains_invalid_component(p: &Path) -> bool {
+fn path_contains_invalid_component(p: &PathBuf) -> bool {
     for c in p.components() {
         match c {
             Component::Normal(_) | Component::CurDir => {},
@@ -539,14 +538,14 @@ fn prepare_run_args(
 
     if let Some(mounts) = &env.mounts {
         let mut parsed_mounts = vec![];
-        for (raw_rel_outer_path, raw_inner_path) in mounts.iter() {
-            let rel_outer_path = parse_rel_path(raw_rel_outer_path)
+        for (rel_outer_path, inner_path) in mounts.iter() {
+            let rel_outer_path = rel_path_from_path_buf(rel_outer_path)
                 .context(ParseConfigOuterPathFailed{
-                    raw_rel_outer_path,
-                    raw_inner_path,
+                    rel_outer_path,
+                    inner_path,
                 })?;
 
-            parsed_mounts.push((rel_outer_path, raw_inner_path));
+            parsed_mounts.push((rel_outer_path, inner_path));
         }
 
         let args = prepare_run_mount_args(dock_dir, &parsed_mounts)
@@ -576,13 +575,13 @@ enum PrepareRunArgsError {
     #[snafu(display(
         "Couldn't parse `mount` configuration for '{}' -> '{}' mapping: {}",
         source,
-        raw_rel_outer_path,
-        raw_inner_path,
+        rel_outer_path.display(),
+        inner_path.display(),
     ))]
     ParseConfigOuterPathFailed{
         source: NewRelPathError,
-        raw_rel_outer_path: String,
-        raw_inner_path: String,
+        rel_outer_path: PathBuf,
+        inner_path: PathBuf,
     },
     #[snafu(display(
         "Couldn't prepare \"mount\" arguments for `docker run`: {}",
@@ -645,14 +644,14 @@ pub enum AssertRunError {
     NonZeroExit{output: Output},
 }
 
-fn prepare_run_mount_args(dock_dir: AbsPathRef, mounts: &[(RelPath, &String)])
+fn prepare_run_mount_args(dock_dir: AbsPathRef, mounts: &[(RelPath, &PathBuf)])
     -> Result<Vec<String>, PrepareRunMountArgsError>
 {
     let cur_hostpaths = hostpaths()
         .context(GetHostpathsFailed)?;
 
-    let mut new_hostpaths = vec![];
-    for (rel_outer_path, raw_inner_path) in mounts {
+    let mut hostpath_cli_args = vec![];
+    for (rel_outer_path, inner_path) in mounts {
         let mut path = dock_dir.to_owned();
         abs_path_extend(&mut path, rel_outer_path.to_vec());
 
@@ -669,22 +668,37 @@ fn prepare_run_mount_args(dock_dir: AbsPathRef, mounts: &[(RelPath, &String)])
             }
         }
 
-        let host_path =
+        let host_path_cli_arg =
             if let Some(s) = abs_path_display(&path) {
                 s
             } else {
                 return Err(PrepareRunMountArgsError::RenderHostPathFailed{
                     path,
-                    inner_path: (*raw_inner_path).to_string(),
+                    inner_path: inner_path.to_path_buf(),
                 });
             };
 
-        new_hostpaths.push((host_path, raw_inner_path));
+        let inner_path_os_string = (*inner_path).clone().into_os_string();
+        let inner_path_cli_arg =
+            match inner_path_os_string.into_string() {
+                Ok(arg) => {
+                    arg
+                },
+                Err(path) => {
+                    let e = PrepareRunMountArgsError::InnerPathAsCliArgFailed{
+                        path,
+                    };
+
+                    return Err(e);
+                },
+            };
+
+        hostpath_cli_args.push((host_path_cli_arg, inner_path_cli_arg));
     }
 
     let mut args = vec![];
 
-    for (host_path, inner_path) in &new_hostpaths {
+    for (host_path, inner_path) in &hostpath_cli_args {
         let mount_spec = format!(
             "type=bind,src={},dst={}",
             host_path,
@@ -693,7 +707,7 @@ fn prepare_run_mount_args(dock_dir: AbsPathRef, mounts: &[(RelPath, &String)])
         args.push(format!("--mount={}", mount_spec));
     }
 
-    let rendered_hostpaths = new_hostpaths
+    let rendered_hostpaths = hostpath_cli_args
         .into_iter()
         .map(|(hp, ip)| format!("{}:{}", hp, ip))
         .collect::<Vec<String>>()
@@ -721,12 +735,19 @@ enum PrepareRunMountArgsError {
     },
     #[snafu(display(
         "Couldn't render the hostpath mapping to '{}' (lossy rendering: '{}')",
-        inner_path,
+        inner_path.display(),
         abs_path_display_lossy(path),
     ))]
     RenderHostPathFailed{
         path: AbsPath,
-        inner_path: String,
+        inner_path: PathBuf,
+    },
+    #[snafu(display(
+        "Couldn't render the inner path '{}' as a CLI argument",
+        PathBuf::from(path).display(),
+    ))]
+    InnerPathAsCliArgFailed{
+        path: OsString,
     },
 }
 
@@ -967,10 +988,10 @@ type AbsPathRef<'a> = &'a [OsString];
 
 type RelPath = Vec<OsString>;
 
-/// Returns the `RelPath` parsed from `p`. `p` must begin with a "current
+/// Returns the `RelPath` derived from `p`. `p` must begin with a "current
 /// directory" component (i.e. `.`).
-fn parse_rel_path(p: &str) -> Result<RelPath, NewRelPathError> {
-    let mut components = Path::new(p).components();
+fn rel_path_from_path_buf(p: &PathBuf) -> Result<RelPath, NewRelPathError> {
+    let mut components = p.components();
 
     if let Some(component) = components.next() {
         if component != Component::CurDir {
