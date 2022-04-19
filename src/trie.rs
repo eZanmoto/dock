@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 use std::hash::Hash;
 
+use snafu::OptionExt;
 use snafu::Snafu;
 
 #[derive(Debug)]
@@ -29,12 +30,8 @@ impl<K: Clone + Eq + Hash, V> Trie<K, V> {
     pub fn insert(&mut self, key: &[K], value: V) -> Result<(), InsertError> {
         let mut key_components = key.to_vec();
 
-        let last =
-            if let Some(v) = key_components.pop() {
-                v
-            } else {
-                return Err(InsertError::EmptyKey);
-            };
+        let last = key_components.pop()
+            .context(EmptyKey)?;
 
         let mut dir_index = 0;
         for k in key_components {

@@ -37,6 +37,7 @@ use clap::ArgMatches;
 use clap::SubCommand;
 use serde::Deserialize;
 use snafu::ResultExt;
+use snafu::OptionExt;
 use snafu::Snafu;
 
 mod docker;
@@ -380,33 +381,20 @@ fn new_docker_rebuild_input(
     if let Some(context_sub_path) = maybe_context_sub_path {
         let mut context_path = dock_dir;
         context_path.push(context_sub_path);
-        let raw_context_path =
-            if let Some(v) = context_path.to_str() {
-                v
-            } else {
-                return Err(
-                    NewDockerRebuildInputError::InvalidUtf8InContextPath{
-                        path: context_path,
-                    }
-                )
-            };
 
-        let raw_dockerfile_path =
-            if let Some(v) = dockerfile_path.to_str() {
-                v
-            } else {
-                return Err(
-                    NewDockerRebuildInputError::InvalidUtf8InDockerfilePath{
-                        path: dockerfile_path.to_path_buf(),
-                    }
-                )
-            };
+        let context_path_cli_arg = context_path.to_str()
+            .context(InvalidUtf8InContextPath{path: context_path.clone()})?;
+
+        let dockerfile_path_cli_arg = dockerfile_path.to_str()
+            .context(InvalidUtf8InDockerfilePath{
+                path: dockerfile_path.to_path_buf(),
+            })?;
 
         Ok(DockerRebuildInput{
             dockerfile: None,
             args: vec![
-                format!("--file={}", raw_dockerfile_path),
-                raw_context_path.to_owned(),
+                format!("--file={}", dockerfile_path_cli_arg),
+                context_path_cli_arg.to_owned(),
             ]
         })
     } else {
@@ -656,27 +644,18 @@ fn prepare_run_mount_args(dock_dir: AbsPathRef, mounts: &[(RelPath, &PathBuf)])
         abs_path_extend(&mut path, rel_outer_path.to_vec());
 
         if let Some(hostpaths) = &cur_hostpaths {
-            if let Some(p) = apply_hostpath(hostpaths, &path) {
-                path = p;
-            } else {
-                return Err(PrepareRunMountArgsError::NoPathRouteOnHost{
-                    // TODO Add `hostpaths` to the error context. This ideally
-                    // requires `&Trie` to implement `Clone` so that a new,
-                    // owned copy of `hostpaths` can be added to the error.
-                    attempted_path: path,
-                });
-            }
+            path = apply_hostpath(hostpaths, &path)
+                // TODO Add `hostpaths` to the error context. This ideally
+                // requires `&Trie` to implement `Clone` so that a new, owned
+                // copy of `hostpaths` can be added to the error.
+                .context(NoPathRouteOnHost{attempted_path: path})?;
         }
 
-        let host_path_cli_arg =
-            if let Some(s) = abs_path_display(&path) {
-                s
-            } else {
-                return Err(PrepareRunMountArgsError::RenderHostPathFailed{
-                    path,
-                    inner_path: inner_path.to_path_buf(),
-                });
-            };
+        let host_path_cli_arg = abs_path_display(&path)
+            .context(RenderHostPathFailed{
+                path,
+                inner_path: inner_path.to_path_buf(),
+            })?;
 
         let inner_path_os_string = (*inner_path).clone().into_os_string();
         let inner_path_cli_arg =
@@ -922,12 +901,11 @@ enum NewAbsPathError {
 fn abs_path_from_path_buf(p: &PathBuf) -> Result<AbsPath, NewAbsPathError> {
     let mut components = p.components();
 
-    if let Some(component) = components.next() {
-        if component != Component::RootDir {
-            return Err(NewAbsPathError::NoRootDirPrefix);
-        }
-    } else {
-        return Err(NewAbsPathError::EmptyAbsPath);
+    let component = components.next()
+        .context(EmptyAbsPath)?;
+
+    if component != Component::RootDir {
+        return Err(NewAbsPathError::NoRootDirPrefix);
     }
 
     let mut abs_path = vec![];
@@ -951,12 +929,8 @@ fn abs_path_display(abs_path: AbsPathRef) -> Option<String> {
 
     let mut string = String::new();
     for component in abs_path {
-        if let Some(s) = component.to_str() {
-            string += &path::MAIN_SEPARATOR.to_string();
-            string += s;
-        } else {
-            return None;
-        }
+        string += &path::MAIN_SEPARATOR.to_string();
+        string += component.to_str()?;
     }
 
     Some(string)
@@ -993,12 +967,11 @@ type RelPath = Vec<OsString>;
 fn rel_path_from_path_buf(p: &PathBuf) -> Result<RelPath, NewRelPathError> {
     let mut components = p.components();
 
-    if let Some(component) = components.next() {
-        if component != Component::CurDir {
-            return Err(NewRelPathError::NoCurDirPrefix);
-        }
-    } else {
-        return Err(NewRelPathError::EmptyRelPath);
+    let component = components.next()
+        .context(EmptyRelPath)?;
+
+    if component != Component::CurDir {
+        return Err(NewRelPathError::NoCurDirPrefix);
     }
 
     let mut rel_path = vec![];
