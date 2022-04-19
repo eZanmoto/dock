@@ -199,6 +199,7 @@ struct DockConfig {
 #[derive(Debug, Deserialize)]
 struct DockEnvironmentConfig {
     context: Option<PathBuf>,
+    workdir: Option<String>,
     args: Option<Vec<String>>,
     mounts: Option<HashMap<PathBuf, PathBuf>>,
     enabled: Option<Vec<DockEnvironmentEnabledConfig>>,
@@ -494,6 +495,10 @@ fn prepare_run_args(
 
     if let Some(args) = &env.args {
         run_args.extend(args.clone());
+    }
+
+    if let Some(dir) = &env.workdir {
+        run_args.push(format!("--workdir={}", dir));
     }
 
     if let Some(enabled) = &env.enabled {
