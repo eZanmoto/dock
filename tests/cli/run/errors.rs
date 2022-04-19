@@ -107,7 +107,7 @@ fn build_with_file_outside_context_directory() {
     let test = test_setup::assert_apply_with_dock_yaml(
         // (2)
         indoc!{"
-            context: dir
+            context: ./dir
         "},
         &Definition{
             name: test_name,
@@ -179,7 +179,9 @@ fn context_starts_with_path_traversal() {
         // (A)
         .code(1)
         // (B)
-        .stderr("context path must be relative, and can't contain traversal\n")
+        .stderr(predicate_str::ends_with(
+            "The relative path didn't start with `.`\n",
+        ))
         // (C)
         .stdout("");
     // (D)
@@ -219,7 +221,9 @@ fn context_contains_path_traversal() {
         // (A)
         .code(1)
         // (B)
-        .stderr("context path must be relative, and can't contain traversal\n")
+        .stderr(predicate_str::ends_with(
+            "The relative path didn't start with `.`\n",
+        ))
         // (C)
         .stdout("");
     // (D)
@@ -259,7 +263,9 @@ fn context_contains_absolute_path() {
         // (A)
         .code(1)
         // (B)
-        .stderr("context path must be relative, and can't contain traversal\n")
+        .stderr(predicate_str::ends_with(
+            "The relative path didn't start with `.`\n",
+        ))
         // (C)
         .stdout("");
     // (D)

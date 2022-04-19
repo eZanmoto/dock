@@ -199,7 +199,7 @@ fn build_with_nested_directory_as_context() {
     let test = test_setup::assert_apply_with_dock_yaml(
         // (2)
         indoc!{"
-            context: dir
+            context: ./dir
         "},
         &Definition{
             name: test_name,

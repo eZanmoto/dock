@@ -258,6 +258,7 @@ fn run(dock_file_name: &str, args: &ArgMatches) -> i32 {
             env
         } else {
             eprintln!("environment '{}' isn't defined", env_name);
+
             return 1;
         };
 
@@ -270,80 +271,48 @@ fn run(dock_file_name: &str, args: &ArgMatches) -> i32 {
 
     let target_img = format!("{}:latest", &img_name);
 
+    let env_context =
+        if let Some(path) = &env.context {
+            match rel_path_from_path_buf(path) {
+                Ok(p) => {
+                    Some(p)
+                },
+                Err(e) => {
+                    eprintln!("couldn't get context as relative path: {}", e);
+
+                    return 1;
+                },
+            }
+        } else {
+            None
+        };
+
     let ok = handle_rebuild_for_run(
         dock_dir.clone(),
         env_name,
-        &env.context,
+        &env_context,
         &target_img,
     );
     if !ok {
         return 1;
     }
 
-    let extra_run_args =
-        match args.values_of(DOCKER_ARGS_FLAG) {
-            Some(vs) => vs.collect(),
-            None => vec![],
-        };
-
-    let dock_dir =
-        match abs_path_from_path_buf(&dock_dir) {
-            Ok(v) => {
-                v
-            },
-            Err(e) => {
-                eprintln!("{:?}", e);
-
-                return 1;
-            },
-        };
-
-    let run_args =
-        match prepare_run_args(env, target_img, &extra_run_args, &dock_dir) {
-            Ok(v) => {
-                v
-            },
-            Err(e) => {
-                eprintln!("{:?}", e);
-
-                return 1;
-            },
-        };
-
-    match docker::stream_run(run_args) {
-        Ok(exit_status) => {
-            exit_code_from_exit_status(exit_status)
-        },
-        Err(e) => {
-            eprintln!("{:?}", e);
-
-            1
-        },
-    }
+    handle_run_for_run(&dock_dir, args, env, target_img)
 }
 
 fn handle_rebuild_for_run(
     dock_dir: PathBuf,
     env_name: &str,
-    env_context: &Option<PathBuf>,
+    maybe_context_sub_path: &Option<RelPath>,
     target_img: &str,
 ) -> bool {
-    if let Some(context_sub_path) = env_context {
-        if path_contains_invalid_component(context_sub_path) {
-            eprintln!(
-                "context path must be relative, and can't contain traversal",
-            );
-            return false;
-        }
-    }
-
     let mut dockerfile_path = dock_dir.clone();
     dockerfile_path.push(format!("{}.Dockerfile", env_name));
 
     let docker_rebuild_input_result = new_docker_rebuild_input(
         dock_dir,
         &dockerfile_path.as_path(),
-        env_context,
+        maybe_context_sub_path,
     );
     let docker_rebuild_input =
         match docker_rebuild_input_result {
@@ -375,13 +344,13 @@ fn handle_rebuild_for_run(
 fn new_docker_rebuild_input(
     dock_dir: PathBuf,
     dockerfile_path: &Path,
-    maybe_context_sub_path: &Option<PathBuf>,
+    maybe_context_sub_path: &Option<RelPath>,
 )
     -> Result<DockerRebuildInput, NewDockerRebuildInputError>
 {
     if let Some(context_sub_path) = maybe_context_sub_path {
         let mut context_path = dock_dir;
-        context_path.push(context_sub_path);
+        path_buf_extend(&mut context_path, context_sub_path);
 
         let context_path_cli_arg = context_path.to_str()
             .context(InvalidUtf8InContextPath{path: context_path.clone()})?;
@@ -470,17 +439,55 @@ fn handle_run_rebuild_result(
     false
 }
 
-// TODO Consider returning the invalid component to support clearer error
-// messages.
-fn path_contains_invalid_component(p: &PathBuf) -> bool {
-    for c in p.components() {
-        match c {
-            Component::Normal(_) | Component::CurDir => {},
-            _ => return true,
-        }
-    }
+fn handle_run_for_run(
+    dock_dir: &PathBuf,
+    args: &ArgMatches,
+    env: &DockEnvironmentConfig,
+    target_img: String,
+)
+    -> i32
+{
 
-    false
+    let extra_run_args =
+        match args.values_of(DOCKER_ARGS_FLAG) {
+            Some(vs) => vs.collect(),
+            None => vec![],
+        };
+
+    let dock_dir =
+        match abs_path_from_path_buf(&dock_dir) {
+            Ok(v) => {
+                v
+            },
+            Err(e) => {
+                eprintln!("{:?}", e);
+
+                return 1;
+            },
+        };
+
+    let run_args =
+        match prepare_run_args(env, target_img, &extra_run_args, &dock_dir) {
+            Ok(v) => {
+                v
+            },
+            Err(e) => {
+                eprintln!("{:?}", e);
+
+                return 1;
+            },
+        };
+
+    match docker::stream_run(run_args) {
+        Ok(exit_status) => {
+            exit_code_from_exit_status(exit_status)
+        },
+        Err(e) => {
+            eprintln!("{:?}", e);
+
+            1
+        },
+    }
 }
 
 fn prepare_run_args(
@@ -1003,4 +1010,12 @@ enum NewRelPathError {
         "The relative path contained a special component, such as `.` or `..`"
     ))]
     SpecialComponentInRelPath,
+}
+
+type RelPathRef<'a> = &'a [OsString];
+
+fn path_buf_extend(path_buf: &mut PathBuf, rel_path: RelPathRef) {
+    for component in rel_path {
+        path_buf.push(component);
+    }
 }
