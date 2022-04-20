@@ -211,6 +211,7 @@ struct DockEnvironmentConfig {
 enum DockEnvironmentEnabledConfig {
     LocalUserGroup,
     NestedDocker,
+    ProjectDir,
 }
 
 fn run(dock_file_name: &str, args: &ArgMatches) -> i32 {
@@ -515,6 +516,9 @@ fn prepare_run_args(
         }
     }
 
+    let cur_hostpaths = hostpaths()
+        .context(GetHostpathsFailed)?;
+
     if let Some(enabled) = &env.enabled {
         if enabled.contains(&DockEnvironmentEnabledConfig::LocalUserGroup) {
             let user_id = run_command("id", &["--user"])
@@ -541,6 +545,26 @@ fn prepare_run_args(
                 &format!("--group-add={}", meta.gid()),
             ]));
         }
+
+        if enabled.contains(&DockEnvironmentEnabledConfig::ProjectDir) {
+            // TODO Add `cur_hostpaths` to the error context. See the comment
+            // above `NoPathRouteOnHost` for more details.
+            let proj_dir_host_path = apply_hostpath(&cur_hostpaths, &dock_dir)
+                .context(NoProjectPathRouteOnHost{attempted_path: dock_dir})?;
+
+            let proj_dir_cli_arg = abs_path_display(&proj_dir_host_path)
+                .context(RenderProjectDirFailed{dir: proj_dir_host_path})?;
+
+            let workdir = env.workdir.as_ref()
+                .context(WorkdirNotSet)?;
+
+            let mount_spec = format!(
+                "type=bind,src={proj_dir_cli_arg},dst={workdir}",
+                proj_dir_cli_arg = proj_dir_cli_arg,
+                workdir = workdir,
+            );
+            run_args.push(format!("--mount={}", mount_spec));
+        }
     }
 
     if let Some(mounts) = &env.mounts {
@@ -555,8 +579,9 @@ fn prepare_run_args(
             parsed_mounts.push((rel_outer_path, inner_path));
         }
 
-        let args = prepare_run_mount_args(dock_dir, &parsed_mounts)
-            .context(PrepareRunMountArgsFailed)?;
+        let args =
+            prepare_run_mount_args(dock_dir, &parsed_mounts, &cur_hostpaths)
+                .context(PrepareRunMountArgsFailed)?;
 
         run_args.extend(args);
     }
@@ -579,6 +604,13 @@ enum PrepareRunArgsError {
     GetGroupIdFailed{source: RunCommandError},
     #[snafu(display("Couldn't get metadata for Docker socket: {}", source))]
     GetDockerSockMetadataFailed{source: IoError},
+    #[snafu(display("`workdir` is required when `project_dir` is enabled"))]
+    WorkdirNotSet,
+    #[snafu(display(
+        "Couldn't render the project directory (lossy rendering: '{}')",
+        abs_path_display_lossy(dir),
+    ))]
+    RenderProjectDirFailed{dir: AbsPath},
     #[snafu(display(
         "Couldn't parse `mount` configuration for '{}' -> '{}' mapping: {}",
         source,
@@ -589,6 +621,15 @@ enum PrepareRunArgsError {
         source: NewRelPathError,
         rel_outer_path: PathBuf,
         inner_path: PathBuf,
+    },
+    #[snafu(display("Couldn't get hostpaths: {}", source))]
+    GetHostpathsFailed{source: HostpathsError},
+    #[snafu(display(
+        "No route to the project path '{}' was found on the host",
+        abs_path_display_lossy(attempted_path),
+    ))]
+    NoProjectPathRouteOnHost{
+        attempted_path: AbsPath,
     },
     #[snafu(display(
         "Couldn't prepare \"mount\" arguments for `docker run`: {}",
@@ -651,24 +692,23 @@ pub enum AssertRunError {
     NonZeroExit{output: Output},
 }
 
-fn prepare_run_mount_args(dock_dir: AbsPathRef, mounts: &[(RelPath, &PathBuf)])
+fn prepare_run_mount_args(
+    dock_dir: AbsPathRef,
+    mounts: &[(RelPath, &PathBuf)],
+    cur_hostpaths: &Option<Hostpaths>,
+)
     -> Result<Vec<String>, PrepareRunMountArgsError>
 {
-    let cur_hostpaths = hostpaths()
-        .context(GetHostpathsFailed)?;
-
     let mut hostpath_cli_args = vec![];
     for (rel_outer_path, inner_path) in mounts {
         let mut path = dock_dir.to_owned();
         abs_path_extend(&mut path, rel_outer_path.to_vec());
 
-        if let Some(hostpaths) = &cur_hostpaths {
-            path = apply_hostpath(hostpaths, &path)
-                // TODO Add `hostpaths` to the error context. This ideally
-                // requires `&Trie` to implement `Clone` so that a new, owned
-                // copy of `hostpaths` can be added to the error.
-                .context(NoPathRouteOnHost{attempted_path: path})?;
-        }
+        // TODO Add `cur_hostpaths` to the error context. This ideally requires
+        // `&Trie` to implement `Clone` so that a new, owned copy of
+        // `cur_hostpaths` can be added to the error.
+        path = apply_hostpath(&cur_hostpaths, &path)
+            .context(NoPathRouteOnHost{attempted_path: path})?;
 
         let host_path_cli_arg = abs_path_display(&path)
             .context(RenderHostPathFailed{
@@ -722,8 +762,6 @@ fn prepare_run_mount_args(dock_dir: AbsPathRef, mounts: &[(RelPath, &PathBuf)])
 
 #[derive(Debug, Snafu)]
 enum PrepareRunMountArgsError {
-    #[snafu(display("Couldn't get hostpaths: {}", source))]
-    GetHostpathsFailed{source: HostpathsError},
     #[snafu(display(
         "No route to the path '{}' was found on the host",
         abs_path_display_lossy(attempted_path),
@@ -873,9 +911,16 @@ enum HostpathsError {
     InnerPathDescendentHasMapping{outer_path: String, inner_path: String},
 }
 
-fn apply_hostpath(hostpaths: &Hostpaths, path: AbsPathRef)
+fn apply_hostpath(maybe_hostpaths: &Option<Hostpaths>, path: AbsPathRef)
     -> Option<AbsPath>
 {
+    let hostpaths =
+        if let Some(v) = maybe_hostpaths {
+            v
+        } else {
+            return Some(path.to_vec());
+        };
+
     let (prefix, host_dir) = hostpaths.value_at_prefix(&path)?;
 
     let rel_path: Vec<OsString> =

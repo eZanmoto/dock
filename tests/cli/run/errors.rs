@@ -305,3 +305,43 @@ fn run_without_nested_docker() {
     // (C)
     docker::assert_image_exists(&test.image_tagged_name);
 }
+
+#[test]
+// Given (1) the dock file defines an environment called `<env>`
+//     AND (2) `<env>` enables `project_dir`
+//     AND (3) `<env>` doesn't define `workdir`
+// When `run <env> cat /a/b/test.txt` is run
+// Then (A) the command returns an exit code of 1
+//     AND (B) the command STDERR contains "`workdir` is required"
+//     AND (C) the command STDOUT is empty
+//     AND (D) the target image exists
+fn project_dir_without_workdir() {
+    let test_name = "project_dir_without_workdir";
+    // (1)
+    let test = test_setup::assert_apply_with_dock_yaml(
+        // (2) (3)
+        indoc!{"
+            enabled:
+            - project_dir
+        "},
+        &Definition{
+            name: test_name,
+            dockerfile_steps: "",
+            fs: &hashmap!{},
+        },
+    );
+    docker::assert_remove_image(&test.image_tagged_name);
+    let args = &[test_name, "cat", "/a/b/test.txt"];
+
+    let cmd_result = success::run_test_cmd(test.dir, args);
+
+    cmd_result
+        // (A)
+        .code(1)
+        // (B)
+        .stderr(predicate_str::contains("`workdir` is required"))
+        // (C)
+        .stdout("");
+    // (D)
+    docker::assert_image_exists(&test.image_tagged_name);
+}

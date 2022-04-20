@@ -796,3 +796,48 @@ fn env_var() {
     // (D)
     docker::assert_image_exists(&test.image_tagged_name);
 }
+
+#[test]
+// Given (1) the dock file defines an environment called `<env>`
+//     AND (2) `<env>` defines `workdir` as `/a/b`
+//     AND (3) `<env>` enables `project_dir`
+//     AND (4) the current directory contains `test.txt`
+// When `run <env> cat /a/b/test.txt` is run
+// Then (A) the command is successful
+//     AND (B) the command STDERR is empty
+//     AND (C) the command STDOUT contains the contents of `test.txt`
+//     AND (D) the target image exists
+fn project_dir() {
+    let test_name = "project_dir";
+    // (1)
+    let test = test_setup::assert_apply_with_dock_yaml(
+        // (2) (3)
+        indoc!{"
+            workdir: '/a/b'
+            enabled:
+            - project_dir
+        "},
+        &Definition{
+            name: test_name,
+            dockerfile_steps: "",
+            fs: &hashmap!{
+                // (4)
+                "test.txt" => test_name,
+            },
+        },
+    );
+    docker::assert_remove_image(&test.image_tagged_name);
+    let args = &[test_name, "cat", "/a/b/test.txt"];
+
+    let cmd_result = run_test_cmd(test.dir, args);
+
+    cmd_result
+        // (A)
+        .code(0)
+        // (B)
+        .stderr("")
+        // (C)
+        .stdout(test_name.to_owned());
+    // (D)
+    docker::assert_image_exists(&test.image_tagged_name);
+}
