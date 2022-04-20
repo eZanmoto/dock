@@ -716,7 +716,7 @@ fn mount_sub_dir() {
 // Given (1) the dock file defines an environment called `<env>`
 //     AND (2) `<env>` defines the workdir as `/a/b
 //     AND (3) the Dockerfile creates `test.txt` in `/a/b/c/d`
-// When `run <env> cat `c/d/test.txt` is run
+// When `run <env> cat c/d/test.txt` is run
 // Then (A) the command is successful
 //     AND (B) the command STDERR is empty
 //     AND (C) the command STDOUT contains the contents of `test.txt`
@@ -754,6 +754,45 @@ fn workdir() {
         .stderr("")
         // (C)
         .stdout(test_name.to_owned() + "\n");
+    // (D)
+    docker::assert_image_exists(&test.image_tagged_name);
+}
+
+#[test]
+// Given (1) the dock file defines an environment called `<env>`
+//     AND (2) `<env>` defines an environment variable `TEST`
+// When `run <env> sh -c 'echo $TEST'` is run
+// Then (A) the command is successful
+//     AND (B) the command STDERR is empty
+//     AND (C) the command STDOUT contains the contents of `TEST`
+//     AND (D) the target image exists
+fn env_var() {
+    let test_name = "env_var";
+    // (1)
+    let test = test_setup::assert_apply_with_dock_yaml(
+        // (2)
+        indoc!{"
+            env:
+                TEST: contents
+        "},
+        &Definition{
+            name: test_name,
+            dockerfile_steps: "",
+            fs: &hashmap!{},
+        },
+    );
+    docker::assert_remove_image(&test.image_tagged_name);
+    let args = &[test_name, "sh", "-c", "echo $TEST"];
+
+    let cmd_result = run_test_cmd(test.dir, args);
+
+    cmd_result
+        // (A)
+        .code(0)
+        // (B)
+        .stderr("")
+        // (C)
+        .stdout("contents\n");
     // (D)
     docker::assert_image_exists(&test.image_tagged_name);
 }
