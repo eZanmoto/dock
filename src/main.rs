@@ -433,7 +433,7 @@ fn handle_run_rebuild_result(
             }
         },
         Err(v) => {
-            eprintln!("{:?}", v);
+            eprintln!("{}", v);
         },
     }
 
@@ -461,7 +461,7 @@ fn handle_run_for_run(
                 v
             },
             Err(e) => {
-                eprintln!("{:?}", e);
+                eprintln!("{}", e);
 
                 return 1;
             },
@@ -473,7 +473,7 @@ fn handle_run_for_run(
                 v
             },
             Err(e) => {
-                eprintln!("{:?}", e);
+                eprintln!("{}", e);
 
                 return 1;
             },
@@ -484,7 +484,7 @@ fn handle_run_for_run(
             exit_code_from_exit_status(exit_status)
         },
         Err(e) => {
-            eprintln!("{:?}", e);
+            eprintln!("{}", e);
 
             1
         },
