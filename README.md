@@ -66,7 +66,7 @@ command finishes.
 #### Configuration
 
 Extra parameters can be provided to the underlying `docker run` command using
-the environment block:
+the environment block. All fields in the environment block are optional.
 
 ``` yaml
 organisation: 'ezanmoto'
@@ -74,13 +74,19 @@ project: 'dock'
 
 environments:
   build:
+    workdir: /app
+
     args:
     - --env=PORT=8080
     - --group-add=test
 
+    env:
+      PROXY_FORWARDING: true
+
     enabled:
     - local_user_group
     - nested_docker
+    - project_dir
 
     # NOTE `mounts` work with "nested" Docker instances; see below for more
     # details.
@@ -88,8 +94,12 @@ environments:
       ./relative/path: /inner/path
 ```
 
+* `workdir`: This defines the directory that the command is run in inside the
+  container.
 * `args`: These `args` are passed to the underlying `docker run` command in the
   same order.
+* `env`: These environment variable definitions are exported inside the Docker
+  container.
 * `nested_docker`: This mounts the default local Docker socket file inside the
   container and, inside the container, adds the user to the owner group for the
   socket file.
@@ -97,6 +107,10 @@ environments:
   run inside the container is run with the user ID and group ID of the user
   running `dock`. Note that these IDs are discovered using the `id` program, and
   so, a failure may occur if the `id` program isn't found.
+* `project_dir`: This mounts the local project directory, i.e. the directory
+* that `dock.yaml` is defined in, to the `workdir` path inside the container.
+  This also works in "nested" Docker scenarios, as described in the "`mounts`"
+  section, below.
 * `mounts`: This section defines bind mounts, where the source paths are
   relative to the directory containing `dock.yaml` (as opposed to being defined
   using absolute paths). These can also allow for bind mounts in "nested" Docker
