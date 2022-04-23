@@ -147,7 +147,6 @@ fn run_returns_correct_exit_code() {
 // Then (A) the command is successful
 //     AND (B) the command STDERR is empty
 //     AND (C) the command STDOUT contains the contents of `test.txt`
-//     AND (D) the target image exists
 fn build_with_project_directory_as_context() {
     let test_name = "build_with_project_directory_as_context";
     // (1)
@@ -179,8 +178,6 @@ fn build_with_project_directory_as_context() {
         .stderr("")
         // (C)
         .stdout(test_name);
-    // (D)
-    docker::assert_image_exists(&test.image_tagged_name);
 }
 
 #[test]
@@ -192,7 +189,6 @@ fn build_with_project_directory_as_context() {
 // Then (A) the command is successful
 //     AND (B) the command STDERR is empty
 //     AND (C) the command STDOUT contains the contents of `test.txt`
-//     AND (D) the target image exists
 fn build_with_nested_directory_as_context() {
     let test_name = "build_with_nested_directory_as_context";
     // (1)
@@ -224,8 +220,6 @@ fn build_with_nested_directory_as_context() {
         .stderr("")
         // (C)
         .stdout(test_name);
-    // (D)
-    docker::assert_image_exists(&test.image_tagged_name);
 }
 
 #[test]
@@ -237,7 +231,6 @@ fn build_with_nested_directory_as_context() {
 // Then (A) the command is successful
 //     AND (B) the command STDERR is empty
 //     AND (C) the command STDOUT contains the contents of `test.txt`
-//     AND (D) the target image exists
 fn run_from_subdir() {
     let test_name = "run_from_subdir";
     // (1)
@@ -274,8 +267,6 @@ fn run_from_subdir() {
         .stderr("")
         // (C)
         .stdout(test_name);
-    // (D)
-    docker::assert_image_exists(&test.image_tagged_name);
 }
 
 pub fn run_test_cmd_from_subdir(
@@ -305,7 +296,6 @@ pub fn run_test_cmd_from_subdir(
 // Then (A) the command is successful
 //     AND (B) the command STDERR is empty
 //     AND (C) the command STDOUT contains `0`
-//     AND (D) the target image exists
 fn run_without_local_user() {
     let test_name = "run_without_local_user";
     // (1)
@@ -331,8 +321,6 @@ fn run_without_local_user() {
         .stderr("")
         // (C)
         .stdout("0\n");
-    // (D)
-    docker::assert_image_exists(&test.image_tagged_name);
 }
 
 #[test]
@@ -343,7 +331,6 @@ fn run_without_local_user() {
 // Then (A) the command is successful
 //     AND (B) the command STDERR is empty
 //     AND (C) the command STDOUT contains `0`
-//     AND (D) the target image exists
 fn run_without_local_group() {
     let test_name = "run_without_local_group";
     // (1)
@@ -369,8 +356,6 @@ fn run_without_local_group() {
         .stderr("")
         // (C)
         .stdout("0\n");
-    // (D)
-    docker::assert_image_exists(&test.image_tagged_name);
 }
 
 #[test]
@@ -382,7 +367,6 @@ fn run_without_local_group() {
 // Then (A) the command is successful
 //     AND (B) the command STDERR is empty
 //     AND (C) the command STDOUT contains `<user_id>`
-//     AND (D) the target image exists
 fn run_with_local_user() {
     let test_name = "run_with_local_user";
     // (1)
@@ -414,8 +398,6 @@ fn run_with_local_user() {
         .stderr("")
         // (C)
         .stdout(user_id);
-    // (D)
-    docker::assert_image_exists(&test.image_tagged_name);
 }
 
 #[test]
@@ -427,7 +409,6 @@ fn run_with_local_user() {
 // Then (A) the command is successful
 //     AND (B) the command STDERR is empty
 //     AND (C) the command STDOUT contains `<group_id>`
-//     AND (D) the target image exists
 fn run_with_local_group() {
     let test_name = "run_with_local_group";
     // (1)
@@ -459,8 +440,6 @@ fn run_with_local_group() {
         .stderr("")
         // (C)
         .stdout(user_id);
-    // (D)
-    docker::assert_image_exists(&test.image_tagged_name);
 }
 
 #[test]
@@ -470,7 +449,6 @@ fn run_with_local_group() {
 // Then (A) the command is successful
 //     AND (B) the command STDERR is empty
 //     AND (C) the command STDOUT contains "a b"
-//     AND (D) the target image exists
 fn run_with_env_var() {
     let test_name = "run_with_env_var";
     // (1)
@@ -499,8 +477,6 @@ fn run_with_env_var() {
         .stderr("")
         // (C)
         .stdout("a b\n");
-    // (D)
-    docker::assert_image_exists(&test.image_tagged_name);
 }
 
 #[test]
@@ -510,7 +486,6 @@ fn run_with_env_var() {
 // Then (A) the command is successful
 //     AND (B) the command STDERR is empty
 //     AND (C) the command STDOUT contains "1234"
-//     AND (D) the target image exists
 fn run_with_specific_user() {
     let test_name = "run_with_specific_user";
     // (1)
@@ -537,8 +512,6 @@ fn run_with_specific_user() {
         .stderr("")
         // (C)
         .stdout("1234\n");
-    // (D)
-    docker::assert_image_exists(&test.image_tagged_name);
 }
 
 #[test]
@@ -574,7 +547,7 @@ fn run_with_nested_docker() {
         .code(0)
         // (B)
         .stderr("");
-    // (D)
+    // (C)
     docker::assert_image_exists(&test.image_tagged_name);
 }
 
@@ -635,7 +608,6 @@ pub struct TestDefinition<'a> {
 // Then (A) the command is successful
 //     AND (B) the command STDERR is empty
 //     AND (C) the command STDOUT contains the contents of `test.txt`
-//     AND (D) the target image exists
 fn mount_proj_dir() {
     let test_name = "mount_proj_dir";
     // (1)
@@ -666,8 +638,6 @@ fn mount_proj_dir() {
         .stderr("")
         // (C)
         .stdout(test_name.to_owned());
-    // (D)
-    docker::assert_image_exists(&test.image_tagged_name);
 }
 
 #[test]
@@ -678,7 +648,6 @@ fn mount_proj_dir() {
 // Then (A) the command is successful
 //     AND (B) the command STDERR is empty
 //     AND (C) the command STDOUT contains the contents of `test.txt`
-//     AND (D) the target image exists
 fn mount_sub_dir() {
     let test_name = "mount_sub_dir";
     // (1)
@@ -709,8 +678,6 @@ fn mount_sub_dir() {
         .stderr("")
         // (C)
         .stdout(test_name.to_owned());
-    // (D)
-    docker::assert_image_exists(&test.image_tagged_name);
 }
 
 #[test]
@@ -721,7 +688,6 @@ fn mount_sub_dir() {
 // Then (A) the command is successful
 //     AND (B) the command STDERR is empty
 //     AND (C) the command STDOUT contains the contents of `test.txt`
-//     AND (D) the target image exists
 fn workdir() {
     let test_name = "workdir";
     // (1)
@@ -755,8 +721,6 @@ fn workdir() {
         .stderr("")
         // (C)
         .stdout(test_name.to_owned() + "\n");
-    // (D)
-    docker::assert_image_exists(&test.image_tagged_name);
 }
 
 #[test]
@@ -766,7 +730,6 @@ fn workdir() {
 // Then (A) the command is successful
 //     AND (B) the command STDERR is empty
 //     AND (C) the command STDOUT contains the contents of `TEST`
-//     AND (D) the target image exists
 fn env_var() {
     let test_name = "env_var";
     // (1)
@@ -794,8 +757,6 @@ fn env_var() {
         .stderr("")
         // (C)
         .stdout("contents\n");
-    // (D)
-    docker::assert_image_exists(&test.image_tagged_name);
 }
 
 #[test]
@@ -807,7 +768,6 @@ fn env_var() {
 // Then (A) the command is successful
 //     AND (B) the command STDERR is empty
 //     AND (C) the command STDOUT contains the contents of `test.txt`
-//     AND (D) the target image exists
 fn project_dir() {
     let test_name = "project_dir";
     // (1)
@@ -837,8 +797,6 @@ fn project_dir() {
         .stderr("")
         // (C)
         .stdout(test_name.to_owned());
-    // (D)
-    docker::assert_image_exists(&test.image_tagged_name);
 }
 
 #[test]
@@ -851,7 +809,6 @@ fn project_dir() {
 // Then (A) the command is successful
 //     AND (B) the command STDERR is empty
 //     AND (C) the command STDOUT contains the contents of `test.txt`
-//     AND (D) the target image exists
 fn cache_volume() {
     let test_name = "cache_volume";
     // (1)
@@ -889,8 +846,6 @@ fn cache_volume() {
         .stderr("")
         // (C)
         .stdout(test_name.to_owned());
-    // (D)
-    docker::assert_image_exists(&test.image_tagged_name);
 }
 
 #[test]
@@ -900,7 +855,6 @@ fn cache_volume() {
 //     AND (4) the cache volume for `test` doesn't exist
 // When `run <env> touch /a/b/test.txt` is run
 // Then (A) the command is successful
-//     AND (B) the target image exists
 fn cache_volume_has_open_permission() {
     let test_name = "cache_volume_has_open_permission";
     // (1)
@@ -928,6 +882,4 @@ fn cache_volume_has_open_permission() {
 
     // (A)
     cmd_result.code(0);
-    // (B)
-    docker::assert_image_exists(&test.image_tagged_name);
 }

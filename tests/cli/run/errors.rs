@@ -313,7 +313,6 @@ fn run_without_nested_docker() {
 // Then (A) the command returns an exit code of 1
 //     AND (B) the command STDERR contains "`workdir` is required"
 //     AND (C) the command STDOUT is empty
-//     AND (D) the target image exists
 fn project_dir_without_workdir() {
     let test_name = "project_dir_without_workdir";
     // (1)
@@ -341,8 +340,6 @@ fn project_dir_without_workdir() {
         .stderr(predicate_str::contains("`workdir` is required"))
         // (C)
         .stdout("");
-    // (D)
-    docker::assert_image_exists(&test.image_tagged_name);
 }
 
 #[test]
@@ -355,7 +352,6 @@ fn project_dir_without_workdir() {
 // Then (A) the command returns a non-zero exit code
 //     AND (B) the command STDERR contains the error message from `cat`
 //     AND (C) the command STDOUT is empty
-//     AND (D) the target image exists
 fn removing_cache_volume_deletes_files() {
     let test_name = "removing_cache_volume_deletes_files";
     // (1)
@@ -395,8 +391,6 @@ fn removing_cache_volume_deletes_files() {
         .stderr("cat: can't open '/a/b/test.txt': No such file or directory\n")
         // (C)
         .stdout("");
-    // (D)
-    docker::assert_image_exists(&test.image_tagged_name);
 }
 
 #[test]
@@ -408,7 +402,6 @@ fn removing_cache_volume_deletes_files() {
 // Then (A) the command returns a non-zero exit code
 //     AND (B) the command STDERR contains the error message from `touch`
 //     AND (C) the command STDOUT is empty
-//     AND (D) the target image exists
 fn manual_volume_has_root_permission() {
     let test_name = "manual_volume_has_root_permission";
     let vol_name = test_setup::cache_volume_prefix(test_name) + ".test";
@@ -447,6 +440,4 @@ fn manual_volume_has_root_permission() {
         .stderr("touch: /a/b/test.txt: Permission denied\n")
         // (C)
         .stdout("");
-    // (D)
-    docker::assert_image_exists(&test.image_tagged_name);
 }
