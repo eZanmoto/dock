@@ -34,7 +34,7 @@ fn run_creates_image_if_none() {
     // (2)
     docker::assert_remove_image(&test.image_tagged_name);
 
-    let cmd_result = run_test_cmd(test.dir, &[test_name, "true"]);
+    let cmd_result = run_test_cmd(&test.dir, &[test_name, "true"]);
 
     cmd_result
         // (A)
@@ -47,7 +47,7 @@ fn run_creates_image_if_none() {
     docker::assert_image_exists(&test.image_tagged_name);
 }
 
-pub fn run_test_cmd(root_test_dir: String, args: &[&str]) -> Assert {
+pub fn run_test_cmd(root_test_dir: &str, args: &[&str]) -> Assert {
     let mut cmd = AssertCommand::cargo_bin(env!("CARGO_PKG_NAME"))
         .expect("couldn't create command for package binary");
     cmd.args(vec!["run"]);
@@ -90,7 +90,7 @@ fn run_uses_correct_image() {
     // (3)
     docker::assert_remove_image(&test.image_tagged_name);
 
-    let cmd_result = run_test_cmd(test.dir, &[test_name, "cat", "test.txt"]);
+    let cmd_result = run_test_cmd(&test.dir, &[test_name, "cat", "test.txt"]);
 
     cmd_result
         // (A)
@@ -123,7 +123,7 @@ fn run_returns_correct_exit_code() {
     docker::assert_remove_image(&test.image_tagged_name);
 
     let cmd_result =
-        run_test_cmd(test.dir, &[test_name, "sh", "-c", "exit 2"]);
+        run_test_cmd(&test.dir, &[test_name, "sh", "-c", "exit 2"]);
 
     cmd_result
         // (A)
@@ -170,7 +170,7 @@ fn build_with_project_directory_as_context() {
     );
     docker::assert_remove_image(&test.image_tagged_name);
 
-    let cmd_result = run_test_cmd(test.dir, &[test_name, "cat", "test.txt"]);
+    let cmd_result = run_test_cmd(&test.dir, &[test_name, "cat", "test.txt"]);
 
     cmd_result
         // (A)
@@ -215,7 +215,7 @@ fn build_with_nested_directory_as_context() {
     );
     docker::assert_remove_image(&test.image_tagged_name);
 
-    let cmd_result = run_test_cmd(test.dir, &[test_name, "cat", "test.txt"]);
+    let cmd_result = run_test_cmd(&test.dir, &[test_name, "cat", "test.txt"]);
 
     cmd_result
         // (A)
@@ -322,7 +322,7 @@ fn run_without_local_user() {
     // (3)
     assert_ne!(user_id.trim_end(), "0");
 
-    let cmd_result = run_test_cmd(test.dir, &[test_name, "id", "-u"]);
+    let cmd_result = run_test_cmd(&test.dir, &[test_name, "id", "-u"]);
 
     cmd_result
         // (A)
@@ -360,7 +360,7 @@ fn run_without_local_group() {
     // (3)
     assert_ne!(user_id.trim_end(), "0");
 
-    let cmd_result = run_test_cmd(test.dir, &[test_name, "id", "-g"]);
+    let cmd_result = run_test_cmd(&test.dir, &[test_name, "id", "-g"]);
 
     cmd_result
         // (A)
@@ -405,7 +405,7 @@ fn run_with_local_user() {
     // (4)
     let user_id = assert_run::assert_run_stdout("id", &["--user"]);
 
-    let cmd_result = run_test_cmd(test.dir, &[test_name, "id", "-u"]);
+    let cmd_result = run_test_cmd(&test.dir, &[test_name, "id", "-u"]);
 
     cmd_result
         // (A)
@@ -450,7 +450,7 @@ fn run_with_local_group() {
     // (4)
     let user_id = assert_run::assert_run_stdout("id", &["--group"]);
 
-    let cmd_result = run_test_cmd(test.dir, &[test_name, "id", "-g"]);
+    let cmd_result = run_test_cmd(&test.dir, &[test_name, "id", "-g"]);
 
     cmd_result
         // (A)
@@ -490,7 +490,7 @@ fn run_with_env_var() {
     docker::assert_remove_image(&test.image_tagged_name);
     let args = &[test_name, "sh", "-c", "echo $X $Y"];
 
-    let cmd_result = run_test_cmd(test.dir, args);
+    let cmd_result = run_test_cmd(&test.dir, args);
 
     cmd_result
         // (A)
@@ -528,7 +528,7 @@ fn run_with_specific_user() {
     );
     docker::assert_remove_image(&test.image_tagged_name);
 
-    let cmd_result = run_test_cmd(test.dir, &[test_name, "id", "-u"]);
+    let cmd_result = run_test_cmd(&test.dir, &[test_name, "id", "-u"]);
 
     cmd_result
         // (A)
@@ -567,7 +567,7 @@ fn run_with_nested_docker() {
     docker::assert_remove_image(&test.image_tagged_name);
     let args = &[test_name, "docker", "version"];
 
-    let cmd_result = run_test_cmd(test.dir, args);
+    let cmd_result = run_test_cmd(&test.dir, args);
 
     cmd_result
         // (A)
@@ -617,6 +617,7 @@ pub fn assert_apply(defn: &TestDefinition) -> References {
     References{
         dir: test_dir,
         image_tagged_name,
+        cache_volume_prefix: test_setup::cache_volume_prefix(defn.name),
     }
 }
 
@@ -656,7 +657,7 @@ fn mount_proj_dir() {
     docker::assert_remove_image(&test.image_tagged_name);
     let args = &[test_name, "cat", "/host/test.txt"];
 
-    let cmd_result = run_test_cmd(test.dir, args);
+    let cmd_result = run_test_cmd(&test.dir, args);
 
     cmd_result
         // (A)
@@ -699,7 +700,7 @@ fn mount_sub_dir() {
     docker::assert_remove_image(&test.image_tagged_name);
     let args = &[test_name, "cat", "/host/c/d/test.txt"];
 
-    let cmd_result = run_test_cmd(test.dir, args);
+    let cmd_result = run_test_cmd(&test.dir, args);
 
     cmd_result
         // (A)
@@ -745,7 +746,7 @@ fn workdir() {
     docker::assert_remove_image(&test.image_tagged_name);
     let args = &[test_name, "cat", "c/d/test.txt"];
 
-    let cmd_result = run_test_cmd(test.dir, args);
+    let cmd_result = run_test_cmd(&test.dir, args);
 
     cmd_result
         // (A)
@@ -784,7 +785,7 @@ fn env_var() {
     docker::assert_remove_image(&test.image_tagged_name);
     let args = &[test_name, "sh", "-c", "echo $TEST"];
 
-    let cmd_result = run_test_cmd(test.dir, args);
+    let cmd_result = run_test_cmd(&test.dir, args);
 
     cmd_result
         // (A)
@@ -820,16 +821,14 @@ fn project_dir() {
         &Definition{
             name: test_name,
             dockerfile_steps: "",
-            fs: &hashmap!{
-                // (4)
-                "test.txt" => test_name,
-            },
+            // (4)
+            fs: &hashmap!{"test.txt" => test_name},
         },
     );
     docker::assert_remove_image(&test.image_tagged_name);
     let args = &[test_name, "cat", "/a/b/test.txt"];
 
-    let cmd_result = run_test_cmd(test.dir, args);
+    let cmd_result = run_test_cmd(&test.dir, args);
 
     cmd_result
         // (A)
@@ -839,5 +838,96 @@ fn project_dir() {
         // (C)
         .stdout(test_name.to_owned());
     // (D)
+    docker::assert_image_exists(&test.image_tagged_name);
+}
+
+#[test]
+// Given (1) the dock file defines an environment called `<env>`
+//     AND (2) `<env>` defines a cache volume called `test` at `/a/b`
+//     AND (3) the Dockerfile used by `<env>` puts a test file in `/`
+//     AND (4) the cache volume for `test` doesn't exist
+//     AND (5) `run <env> cp /test.txt /a/b` was run
+// When `run <env> cat /a/b/test.txt` is run
+// Then (A) the command is successful
+//     AND (B) the command STDERR is empty
+//     AND (C) the command STDOUT contains the contents of `test.txt`
+//     AND (D) the target image exists
+fn cache_volume() {
+    let test_name = "cache_volume";
+    // (1)
+    let test = test_setup::assert_apply_with_dock_yaml(
+        // (2)
+        indoc!{"
+            context: .
+            cache_volumes:
+              test: '/a/b'
+        "},
+        &Definition{
+            name: test_name,
+            // (3)
+            dockerfile_steps: indoc!{"
+                USER 10000
+                COPY test.txt /
+            "},
+            fs: &hashmap!{"test.txt" => test_name},
+        },
+    );
+    docker::assert_remove_image(&test.image_tagged_name);
+    // (4)
+    docker::assert_remove_volume(&test.cache_volume_name("test"));
+    // (5)
+    run_test_cmd(&test.dir, &[test_name, "cp", "/test.txt", "/a/b"])
+        .success();
+    let args = &[test_name, "cat", "/a/b/test.txt"];
+
+    let cmd_result = run_test_cmd(&test.dir, args);
+
+    cmd_result
+        // (A)
+        .code(0)
+        // (B)
+        .stderr("")
+        // (C)
+        .stdout(test_name.to_owned());
+    // (D)
+    docker::assert_image_exists(&test.image_tagged_name);
+}
+
+#[test]
+// Given (1) the dock file defines an environment called `<env>`
+//     AND (2) `<env>` defines a cache volume called `test` at `/a/b`
+//     AND (3) the Dockerfile used by `<env>` sets the user to non-root
+//     AND (4) the cache volume for `test` doesn't exist
+// When `run <env> touch /a/b/test.txt` is run
+// Then (A) the command is successful
+//     AND (B) the target image exists
+fn cache_volume_has_open_permission() {
+    let test_name = "cache_volume_has_open_permission";
+    // (1)
+    let test = test_setup::assert_apply_with_dock_yaml(
+        // (2)
+        indoc!{"
+            cache_volumes:
+              test: '/a/b'
+        "},
+        &Definition{
+            name: test_name,
+            // (3)
+            dockerfile_steps: indoc!{"
+                USER 10000
+            "},
+            fs: &hashmap!{},
+        },
+    );
+    docker::assert_remove_image(&test.image_tagged_name);
+    // (4)
+    docker::assert_remove_volume(&test.cache_volume_name("test"));
+
+    let cmd_result =
+        run_test_cmd(&test.dir, &[test_name, "touch", "/a/b/test.txt"]);
+
+    // (A)
+    cmd_result.code(0);
+    // (B)
     docker::assert_image_exists(&test.image_tagged_name);
 }

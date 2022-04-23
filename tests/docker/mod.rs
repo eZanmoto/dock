@@ -79,3 +79,31 @@ pub fn assert_no_containers_from_image(tagged_name: &str) {
 
     assert!(stdout == "", "stdout is not empty: {}", stdout);
 }
+
+pub fn assert_remove_volume(name: &str) {
+    let mut cmd = Command::new("docker");
+    cmd.args(vec!["volume", "rm", &name]);
+    cmd.env_clear();
+
+    let output = cmd.output()
+        .unwrap_or_else(|_| panic!(
+            "couldn't get output for `docker volume rm {}`",
+            name,
+        ));
+
+    if output.status.success() {
+        return
+    }
+
+    let stderr = str::from_utf8(&output.stderr)
+        .unwrap_or_else(|_| panic!(
+            "couldn't decode stderr for `docker volume rm {}`",
+            name,
+        ));
+
+    let allowable_stderr =
+        format!("Error: No such volume: {}\n", name);
+    if stderr != allowable_stderr {
+        panic!("unexpected stderr: {:?}", output);
+    }
+}

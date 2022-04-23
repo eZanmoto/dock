@@ -43,3 +43,13 @@ tests have completed. The default behaviour of `dock` is to clean up all
 containers after they've run, whether they've been run as part of a `rebuild` or
 other command, so if any containers descended from the base image exist after
 testing, then this indicates that `dock` didn't clean up after all operations.
+
+Command Error Messages
+----------------------
+
+Some tests verify the error messages returned by certain commands such as `cat`
+and `touch`. The exact error messages that get generated depend on the specific
+implementation of the programs used, and generally depend on the image that the
+command is run in (because the image defines what implementation is installed).
+As such, if different (base) images are used in these tests, the expected
+messages may need to change.

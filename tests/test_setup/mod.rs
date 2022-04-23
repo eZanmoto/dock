@@ -100,7 +100,12 @@ pub fn assert_apply_with_dockerfile_name(
     References{
         dir: test_dir,
         image_tagged_name,
+        cache_volume_prefix: cache_volume_prefix(test_name),
     }
+}
+
+pub fn cache_volume_prefix(test_name: &str) -> String {
+    format!("ezanmoto.dock.test.{}.cache", test_name)
 }
 
 pub struct Definition<'a> {
@@ -112,6 +117,13 @@ pub struct Definition<'a> {
 pub struct References {
     pub dir: String,
     pub image_tagged_name: String,
+    pub cache_volume_prefix: String,
+}
+
+impl References {
+    pub fn cache_volume_name(&self, suffix: &str) -> String {
+        format!("{}.{}", self.cache_volume_prefix, suffix)
+    }
 }
 
 pub fn assert_create_root_dir(name: &str) -> String {

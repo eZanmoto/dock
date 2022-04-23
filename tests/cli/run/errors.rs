@@ -36,7 +36,7 @@ fn run_with_build_failure() {
     // (2)
     docker::assert_remove_image(&test.image_tagged_name);
 
-    let cmd_result = success::run_test_cmd(test.dir, &[test_name, "true"]);
+    let cmd_result = success::run_test_cmd(&test.dir, &[test_name, "true"]);
 
     // NOTE This error message depends on the specific message returned by the
     // Docker server. This message is correct when using
@@ -73,15 +73,14 @@ fn run_with_run_failure() {
     });
 
     let cmd_result =
-        success::run_test_cmd(test.dir, &[test_name, "cat", "/nonexistent"]);
+        success::run_test_cmd(&test.dir, &[test_name, "cat", "/nonexistent"]);
 
     cmd_result
         // (A)
         .code(predicate::ne(0))
         // (B)
-        // NOTE This error message depends on the specific implementation of
-        // the `cat` program in the image. As such, if a different base image
-        // is used, this expected message may need to change.
+        // NOTE See "Command Error Messages" in `tests/cli/README.md` for
+        // caveats on this error message.
         .stderr("cat: can't open '/nonexistent': No such file or directory\n")
         // (C)
         .stdout("");
@@ -124,7 +123,7 @@ fn build_with_file_outside_context_directory() {
     );
     docker::assert_remove_image(&test.image_tagged_name);
 
-    let cmd_result = success::run_test_cmd(test.dir, &[test_name, "true"]);
+    let cmd_result = success::run_test_cmd(&test.dir, &[test_name, "true"]);
 
     cmd_result
         // (A)
@@ -173,7 +172,7 @@ fn context_starts_with_path_traversal() {
     );
     docker::assert_remove_image(&test.image_tagged_name);
 
-    let cmd_result = success::run_test_cmd(test.dir, &[test_name, "true"]);
+    let cmd_result = success::run_test_cmd(&test.dir, &[test_name, "true"]);
 
     cmd_result
         // (A)
@@ -215,7 +214,7 @@ fn context_contains_path_traversal() {
     );
     docker::assert_remove_image(&test.image_tagged_name);
 
-    let cmd_result = success::run_test_cmd(test.dir, &[test_name, "true"]);
+    let cmd_result = success::run_test_cmd(&test.dir, &[test_name, "true"]);
 
     cmd_result
         // (A)
@@ -257,7 +256,7 @@ fn context_contains_absolute_path() {
     );
     docker::assert_remove_image(&test.image_tagged_name);
 
-    let cmd_result = success::run_test_cmd(test.dir, &[test_name, "true"]);
+    let cmd_result = success::run_test_cmd(&test.dir, &[test_name, "true"]);
 
     cmd_result
         // (A)
@@ -295,7 +294,7 @@ fn run_without_nested_docker() {
     docker::assert_remove_image(&test.image_tagged_name);
     let args = &[test_name, "docker", "version"];
 
-    let cmd_result = success::run_test_cmd(test.dir, args);
+    let cmd_result = success::run_test_cmd(&test.dir, args);
 
     cmd_result
         // (A)
@@ -333,13 +332,119 @@ fn project_dir_without_workdir() {
     docker::assert_remove_image(&test.image_tagged_name);
     let args = &[test_name, "cat", "/a/b/test.txt"];
 
-    let cmd_result = success::run_test_cmd(test.dir, args);
+    let cmd_result = success::run_test_cmd(&test.dir, args);
 
     cmd_result
         // (A)
         .code(1)
         // (B)
         .stderr(predicate_str::contains("`workdir` is required"))
+        // (C)
+        .stdout("");
+    // (D)
+    docker::assert_image_exists(&test.image_tagged_name);
+}
+
+#[test]
+// Given (1) the dock file defines an environment called `<env>`
+//     AND (2) `<env>` defines a cache volume called `test` at `/a/b`
+//     AND (3) the Dockerfile used by `<env>` puts a test file in `/`
+//     AND (4) `run <env> cp /test.txt /a/b` was run
+//     AND (5) then the cache volume for `test` was deleted
+// When `run <env> cat /a/b/test.txt` is run
+// Then (A) the command returns a non-zero exit code
+//     AND (B) the command STDERR contains the error message from `cat`
+//     AND (C) the command STDOUT is empty
+//     AND (D) the target image exists
+fn removing_cache_volume_deletes_files() {
+    let test_name = "removing_cache_volume_deletes_files";
+    // (1)
+    let test = test_setup::assert_apply_with_dock_yaml(
+        // (2)
+        indoc!{"
+            context: .
+            cache_volumes:
+              test: '/a/b'
+        "},
+        &Definition{
+            name: test_name,
+            // (3)
+            dockerfile_steps: indoc!{"
+                USER 10000
+                COPY test.txt /
+            "},
+            fs: &hashmap!{"test.txt" => test_name},
+        },
+    );
+    docker::assert_remove_image(&test.image_tagged_name);
+    // (4)
+    success::run_test_cmd(&test.dir, &[test_name, "cp", "/test.txt", "/a/b"])
+        .success();
+    // (5)
+    docker::assert_remove_volume(&test.cache_volume_name("test"));
+    let args = &[test_name, "cat", "/a/b/test.txt"];
+
+    let cmd_result = success::run_test_cmd(&test.dir, args);
+
+    cmd_result
+        // (A)
+        .code(predicate::ne(0))
+        // (B)
+        // NOTE See "Command Error Messages" in `tests/cli/README.md` for
+        // caveats on this error message.
+        .stderr("cat: can't open '/a/b/test.txt': No such file or directory\n")
+        // (C)
+        .stdout("");
+    // (D)
+    docker::assert_image_exists(&test.image_tagged_name);
+}
+
+#[test]
+// Given (1) the dock file defines an environment called `<env>`
+//     AND (2) `<env>` defines a volume at `/a/b`
+//     AND (3) the Dockerfile used by `<env>` sets the user to non-root
+//     AND (4) the volume doesn't exist
+// When `run <env> touch /a/b/test.txt` is run
+// Then (A) the command returns a non-zero exit code
+//     AND (B) the command STDERR contains the error message from `touch`
+//     AND (C) the command STDOUT is empty
+//     AND (D) the target image exists
+fn manual_volume_has_root_permission() {
+    let test_name = "manual_volume_has_root_permission";
+    let vol_name = test_setup::cache_volume_prefix(test_name) + ".test";
+    // (1)
+    let test = test_setup::assert_apply_with_dock_yaml(
+        // (2)
+        &formatdoc!{
+            "
+                args:
+                - --mount=type=volume,src={vol_name},dst=/a/b
+            ",
+            vol_name = vol_name,
+        },
+        &Definition{
+            name: test_name,
+            // (3)
+            dockerfile_steps: indoc!{"
+                USER 10000
+            "},
+            fs: &hashmap!{},
+        },
+    );
+    docker::assert_remove_image(&test.image_tagged_name);
+    // (4)
+    docker::assert_remove_volume(&vol_name);
+    let args = &[test_name, "touch", "/a/b/test.txt"];
+
+    let cmd_result = success::run_test_cmd(&test.dir, args);
+
+    cmd_result
+        // (A)
+        .code(predicate::ne(0))
+        // (B)
+        // NOTE See "Command Error Messages" in `tests/cli/README.md` for
+        // caveats on this error message.
+        .stderr("touch: /a/b/test.txt: Permission denied\n")
         // (C)
         .stdout("");
     // (D)

@@ -77,7 +77,7 @@ environments:
     workdir: /app
 
     args:
-    - --env=PORT=8080
+    - --env=XDG_CACHE_HOME=/tmp/cache
     - --group-add=test
 
     env:
@@ -87,6 +87,10 @@ environments:
     - local_user_group
     - nested_docker
     - project_dir
+
+    cache_volumes:
+      tmp: /tmp/cache
+      pkg: /go/pkg
 
     # NOTE `mounts` work with "nested" Docker instances; see below for more
     # details.
@@ -108,9 +112,12 @@ environments:
   running `dock`. Note that these IDs are discovered using the `id` program, and
   so, a failure may occur if the `id` program isn't found.
 * `project_dir`: This mounts the local project directory, i.e. the directory
-* that `dock.yaml` is defined in, to the `workdir` path inside the container.
+  that `dock.yaml` is defined in, to the `workdir` path inside the container.
   This also works in "nested" Docker scenarios, as described in the "`mounts`"
   section, below.
+* `cache_volumes`: This creates a new volume at the given path, but recursively
+  changes the permissions of the path to have open (`0777`) permissions. See the
+  "`cache_volumes`" section, below, for more details.
 * `mounts`: This section defines bind mounts, where the source paths are
   relative to the directory containing `dock.yaml` (as opposed to being defined
   using absolute paths). These can also allow for bind mounts in "nested" Docker
@@ -145,6 +152,25 @@ bind-mounts are available in a container, and can use this to map paths from
 inside containers, back to the actual paths on the host. This can allow
 bind-mounting to be utilised to any depth of container nesting, as long as all
 paths are reachable on the host.
+
+### `cache_mounts`
+
+`cache_mounts` exists to help in scenarios where a volume should be available to
+a container, but where the container is run with a non-`root` user. Before a
+container is run by `dock`, `dock` recursively updates the permissions of volume
+directories to be open (`0777`), so that they can be written to by non-`root`
+users.
+
+The reason for this functionality is because, by default, volumes created by
+`docker` are owned by root, and so can't generally be written to by non-`root`
+users. Solving this can be tricky when wanting to run a container with a
+non-`root` user, because changing the directory permissions requires `root`
+permissions. Switching between users is possible during a `docker build`, but
+it's generally not recommended to mount volumes during `docker build`, so the
+solution ideally happens after this. Different options are possible, such as
+using `sudo`, `su`, scripts with sticky bits, or possibly using BuildKit, but
+`cache_mounts` can be used as a general, image-independent mechanism to handle
+this scenario.
 
 Development
 -----------

@@ -2,10 +2,14 @@
 # taken that collisions don't occur between Rust output and local output.
 tgt_dir:=target
 tgt_test_dir:=$(tgt_dir)/tests
-test_base_img_name:=ezanmoto/dock.test_base
+
+test_org:=ezanmoto
+test_proj:=dock
+test_base_img_name:=$(test_org)/$(test_proj).test_base
 test_base_img_tag:=latest
 test_base_img:=$(test_base_img_name):$(test_base_img_tag)
-test_img_namespace:=ezanmoto/dock.test
+test_img_namespace:=$(test_org)/$(test_proj).test
+test_vol_namespace:=$(test_org).$(test_proj).test
 
 .PHONY: check
 check: \
@@ -73,3 +77,8 @@ clean: clean_images
 clean_images:
 	bash scripts/clean_images.sh \
 		'$(test_img_namespace)'
+
+.PHONY: clean_volumes
+clean_volumes:
+	bash scripts/clean_volumes.sh \
+		'$(test_vol_namespace)'

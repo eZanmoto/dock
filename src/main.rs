@@ -45,6 +45,7 @@ mod fs;
 mod rebuild;
 mod trie;
 
+use docker::AssertRunError as DockerAssertRunError;
 use rebuild::RebuildError;
 use rebuild::RebuildWithCapturedOutputError;
 use trie::InsertError;
@@ -202,6 +203,7 @@ struct DockEnvironmentConfig {
     workdir: Option<String>,
     args: Option<Vec<String>>,
     env: Option<HashMap<String, String>>,
+    cache_volumes: Option<HashMap<String, PathBuf>>,
     mounts: Option<HashMap<PathBuf, PathBuf>>,
     enabled: Option<Vec<DockEnvironmentEnabledConfig>>,
 }
@@ -299,7 +301,15 @@ fn run(dock_file_name: &str, args: &ArgMatches) -> i32 {
         return 1;
     }
 
-    handle_run_for_run(&dock_dir, args, env, target_img)
+    let proj = Project{org: conf.organisation, name: conf.project};
+
+    handle_run_for_run(&dock_dir, args, &proj, env_name, env, target_img)
+}
+
+#[derive(Debug)]
+struct Project{
+    org: String,
+    name: String,
 }
 
 fn handle_rebuild_for_run(
@@ -444,6 +454,8 @@ fn handle_run_rebuild_result(
 fn handle_run_for_run(
     dock_dir: &PathBuf,
     args: &ArgMatches,
+    proj: &Project,
+    env_name: &str,
     env: &DockEnvironmentConfig,
     target_img: String,
 )
@@ -468,8 +480,17 @@ fn handle_run_for_run(
             },
         };
 
+    let run_args_result = prepare_run_args(
+        proj,
+        env_name,
+        env,
+        target_img,
+        &extra_run_args,
+        &dock_dir,
+    );
+
     let run_args =
-        match prepare_run_args(env, target_img, &extra_run_args, &dock_dir) {
+        match run_args_result {
             Ok(v) => {
                 v
             },
@@ -493,6 +514,8 @@ fn handle_run_for_run(
 }
 
 fn prepare_run_args(
+    proj: &Project,
+    env_name: &str,
     env: &DockEnvironmentConfig,
     target_img: String,
     extra_args: &[&str],
@@ -501,6 +524,47 @@ fn prepare_run_args(
     -> Result<Vec<String>, PrepareRunArgsError>
 {
     let mut run_args = to_strings(&["run", "--rm"]);
+
+    if let Some(cache_volumes) = &env.cache_volumes {
+        for (name, path) in cache_volumes.iter() {
+            let path_abs_path = abs_path_from_path_buf(path)
+                .context(CacheVolDirAsAbsPathFailed)?;
+
+            let path_cli_arg = abs_path_display(&path_abs_path)
+                .context(RenderCacheVolDirFailed{dir: path_abs_path})?;
+
+            let vol_name = format!(
+                "{}.{}.{}.cache.{}",
+                proj.org,
+                proj.name,
+                env_name,
+                name,
+            );
+            let mount_spec =
+                format!("type=volume,src={},dst={}", vol_name, path_cli_arg);
+            let mount_arg = format!("--mount={}", mount_spec);
+
+            docker::assert_run(&[
+                "run",
+                "--rm",
+                "--user=root",
+                &mount_arg,
+                &target_img,
+                "chmod",
+                // We would ideally use `--recursive` instead of `-R` in order
+                // to be more explicit, but in practice, `-R` has been found to
+                // be available in more `chmod` implementations (notably, the
+                // implementation used in `busybox`/`alpine` doesn't support
+                // `--recursive`).
+                "-R",
+                "0777",
+                &path_cli_arg,
+            ])
+                .context(ChangeCacheOwnershipFailed)?;
+
+            run_args.push(mount_arg);
+        }
+    }
 
     if let Some(args) = &env.args {
         run_args.extend(args.clone());
@@ -558,11 +622,8 @@ fn prepare_run_args(
             let workdir = env.workdir.as_ref()
                 .context(WorkdirNotSet)?;
 
-            let mount_spec = format!(
-                "type=bind,src={proj_dir_cli_arg},dst={workdir}",
-                proj_dir_cli_arg = proj_dir_cli_arg,
-                workdir = workdir,
-            );
+            let mount_spec =
+                format!( "type=bind,src={},dst={}", proj_dir_cli_arg, workdir);
             run_args.push(format!("--mount={}", mount_spec));
         }
     }
@@ -598,6 +659,18 @@ const DOCKER_SOCK_PATH: &str = "/var/run/docker.sock";
 #[allow(clippy::enum_variant_names)]
 #[derive(Debug, Snafu)]
 enum PrepareRunArgsError {
+    #[snafu(display(
+        "Couldn't convert the cache volume directory to an absolute path: {}",
+        source,
+    ))]
+    CacheVolDirAsAbsPathFailed{source: NewAbsPathError},
+    #[snafu(display(
+        "Couldn't render the cache volume directory (lossy rendering: '{}')",
+        abs_path_display_lossy(dir),
+    ))]
+    RenderCacheVolDirFailed{dir: AbsPath},
+    #[snafu(display("Couldn't set the ownership of the cache: {}", source))]
+    ChangeCacheOwnershipFailed{source: DockerAssertRunError},
     #[snafu(display("Couldn't get user ID for the active user: {}", source))]
     GetUserIdFailed{source: RunCommandError},
     #[snafu(display("Couldn't get group ID for the active user: {}", source))]
