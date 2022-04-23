@@ -10,6 +10,8 @@ use std::path::Path;
 pub const IMAGE_NAME_ROOT: &str = env!("TEST_IMG_NAMESPACE");
 const TEST_BASE_IMG: &str = env!("TEST_BASE_IMG");
 const TEST_DIR: &str = env!("TEST_DIR");
+const TEST_ORG: &str = env!("TEST_ORG");
+const TEST_PROJ: &str = env!("TEST_PROJ");
 
 pub fn assert_apply_with_empty_dock_yaml(defn: &Definition) -> References {
     assert_apply_with_dock_yaml("{}", defn)
@@ -29,8 +31,8 @@ pub fn assert_apply_with_dock_yaml(
 
     let dock_yaml = &formatdoc!{
         "
-            organisation: 'ezanmoto'
-            project: 'dock.test'
+            organisation: '{test_org}'
+            project: '{test_proj}'
 
             environments:
               {test_name}:
@@ -38,6 +40,8 @@ pub fn assert_apply_with_dock_yaml(
         ",
         test_name = defn.name,
         env_defn = indented_env_defn,
+        test_org = TEST_ORG,
+        test_proj = TEST_PROJ,
     };
 
     let dock_yaml_name = "dock.yaml";
@@ -105,7 +109,7 @@ pub fn assert_apply_with_dockerfile_name(
 }
 
 pub fn cache_volume_prefix(test_name: &str) -> String {
-    format!("ezanmoto.dock.test.{}.cache", test_name)
+    format!("{}.{}.{}.cache", TEST_ORG, TEST_PROJ, test_name)
 }
 
 pub struct Definition<'a> {

@@ -34,6 +34,8 @@ check_intg: clean_images $(tgt_test_dir)
 	TEST_IMG_NAMESPACE='$(test_img_namespace)' \
 		TEST_DIR='$(shell pwd)/$(tgt_test_dir)' \
 		TEST_BASE_IMG='$(test_base_img)' \
+		TEST_ORG='$(test_org)' \
+		TEST_PROJ='$(test_proj).test' \
 		cargo test \
 			-- \
 			--show-output \
@@ -48,6 +50,8 @@ check_lint:
 	TEST_IMG_NAMESPACE='$(test_img_namespace)' \
 		TEST_DIR='$(shell pwd)/$(tgt_test_dir)' \
 		TEST_BASE_IMG='$(test_base_img)' \
+		TEST_ORG='$(test_org)' \
+		TEST_PROJ='$(test_proj).test' \
 		cargo clippy \
 			--all-targets \
 			--all-features \
