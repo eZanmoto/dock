@@ -488,9 +488,9 @@ fn run_with_env_var() {
         },
     );
     docker::assert_remove_image(&test.image_tagged_name);
-    let args = &[test_name, "sh", "-c", "echo $X $Y"];
 
-    let cmd_result = run_test_cmd(&test.dir, args);
+    let cmd_result =
+        run_test_cmd(&test.dir, &[test_name, "sh", "-c", "echo $X $Y"]);
 
     cmd_result
         // (A)
@@ -565,9 +565,9 @@ fn run_with_nested_docker() {
         "},
     });
     docker::assert_remove_image(&test.image_tagged_name);
-    let args = &[test_name, "docker", "version"];
 
-    let cmd_result = run_test_cmd(&test.dir, args);
+    let cmd_result =
+        run_test_cmd(&test.dir, &[test_name, "docker", "version"]);
 
     cmd_result
         // (A)
@@ -655,9 +655,9 @@ fn mount_proj_dir() {
         },
     );
     docker::assert_remove_image(&test.image_tagged_name);
-    let args = &[test_name, "cat", "/host/test.txt"];
 
-    let cmd_result = run_test_cmd(&test.dir, args);
+    let cmd_result =
+        run_test_cmd(&test.dir, &[test_name, "cat", "/host/test.txt"]);
 
     cmd_result
         // (A)
@@ -698,9 +698,9 @@ fn mount_sub_dir() {
         },
     );
     docker::assert_remove_image(&test.image_tagged_name);
-    let args = &[test_name, "cat", "/host/c/d/test.txt"];
 
-    let cmd_result = run_test_cmd(&test.dir, args);
+    let cmd_result =
+        run_test_cmd(&test.dir, &[test_name, "cat", "/host/c/d/test.txt"]);
 
     cmd_result
         // (A)
@@ -744,9 +744,9 @@ fn workdir() {
         },
     );
     docker::assert_remove_image(&test.image_tagged_name);
-    let args = &[test_name, "cat", "c/d/test.txt"];
 
-    let cmd_result = run_test_cmd(&test.dir, args);
+    let cmd_result =
+        run_test_cmd(&test.dir, &[test_name, "cat", "c/d/test.txt"]);
 
     cmd_result
         // (A)
@@ -783,9 +783,9 @@ fn env_var() {
         },
     );
     docker::assert_remove_image(&test.image_tagged_name);
-    let args = &[test_name, "sh", "-c", "echo $TEST"];
 
-    let cmd_result = run_test_cmd(&test.dir, args);
+    let cmd_result =
+        run_test_cmd(&test.dir, &[test_name, "sh", "-c", "echo $TEST"]);
 
     cmd_result
         // (A)
@@ -826,9 +826,9 @@ fn project_dir() {
         },
     );
     docker::assert_remove_image(&test.image_tagged_name);
-    let args = &[test_name, "cat", "/a/b/test.txt"];
 
-    let cmd_result = run_test_cmd(&test.dir, args);
+    let cmd_result =
+        run_test_cmd(&test.dir, &[test_name, "cat", "/a/b/test.txt"]);
 
     cmd_result
         // (A)
@@ -878,9 +878,9 @@ fn cache_volume() {
     // (5)
     run_test_cmd(&test.dir, &[test_name, "cp", "/test.txt", "/a/b"])
         .success();
-    let args = &[test_name, "cat", "/a/b/test.txt"];
 
-    let cmd_result = run_test_cmd(&test.dir, args);
+    let cmd_result =
+        run_test_cmd(&test.dir, &[test_name, "cat", "/a/b/test.txt"]);
 
     cmd_result
         // (A)

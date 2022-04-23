@@ -292,9 +292,9 @@ fn run_without_nested_docker() {
         env_defn: "{}",
     });
     docker::assert_remove_image(&test.image_tagged_name);
-    let args = &[test_name, "docker", "version"];
 
-    let cmd_result = success::run_test_cmd(&test.dir, args);
+    let cmd_result =
+        success::run_test_cmd(&test.dir, &[test_name, "docker", "version"]);
 
     cmd_result
         // (A)
@@ -330,9 +330,9 @@ fn project_dir_without_workdir() {
         },
     );
     docker::assert_remove_image(&test.image_tagged_name);
-    let args = &[test_name, "cat", "/a/b/test.txt"];
 
-    let cmd_result = success::run_test_cmd(&test.dir, args);
+    let cmd_result =
+        success::run_test_cmd(&test.dir, &[test_name, "cat", "/a/b/test.txt"]);
 
     cmd_result
         // (A)
@@ -382,9 +382,9 @@ fn removing_cache_volume_deletes_files() {
         .success();
     // (5)
     docker::assert_remove_volume(&test.cache_volume_name("test"));
-    let args = &[test_name, "cat", "/a/b/test.txt"];
 
-    let cmd_result = success::run_test_cmd(&test.dir, args);
+    let cmd_result =
+        success::run_test_cmd(&test.dir, &[test_name, "cat", "/a/b/test.txt"]);
 
     cmd_result
         // (A)
