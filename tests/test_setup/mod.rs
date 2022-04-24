@@ -31,34 +31,12 @@ pub fn assert_apply_with_schema_version(
 ) -> References {
     let mut fs_state = defn.fs.clone();
 
-    let indented_env_defn =
-        env_defn
-            .lines()
-            .collect::<Vec<&str>>()
-            .join("\n    ");
-
-    let dock_yaml = &formatdoc!{
-        "
-            schema_version: '{schema_vsn}'
-            organisation: '{test_org}'
-            project: '{test_proj}'
-
-            environments:
-              {test_name}:
-                {env_defn}
-        ",
-        schema_vsn = schema_vsn,
-        test_name = defn.name,
-        env_defn = indented_env_defn,
-        test_org = TEST_ORG,
-        test_proj = TEST_PROJ,
-    };
-
     let dock_yaml_name = "dock.yaml";
     let dock_yaml_exists = fs_state.contains_key(dock_yaml_name);
     assert!(!dock_yaml_exists, "`defn.fs` contains `{}`", dock_yaml_name);
 
-    fs_state.insert(dock_yaml_name, dock_yaml);
+    let dock_file = render_dock_file(schema_vsn, defn.name, env_defn);
+    fs_state.insert(dock_yaml_name, &dock_file);
 
     assert_apply_with_dockerfile_name(
         &format!("{}.Dockerfile", defn.name),
@@ -68,6 +46,33 @@ pub fn assert_apply_with_schema_version(
             fs: &fs_state,
         },
     )
+}
+
+pub fn render_dock_file(schema_vsn: &str, env_name: &str, env_defn: &str)
+    -> String
+{
+    let indented_env_defn =
+        env_defn
+            .lines()
+            .collect::<Vec<&str>>()
+            .join("\n    ");
+
+    formatdoc!{
+        "
+            schema_version: '{schema_vsn}'
+            organisation: '{test_org}'
+            project: '{test_proj}'
+
+            environments:
+              {env_name}:
+                {env_defn}
+        ",
+        schema_vsn = schema_vsn,
+        env_name = env_name,
+        env_defn = indented_env_defn,
+        test_org = TEST_ORG,
+        test_proj = TEST_PROJ,
+    }
 }
 
 pub fn assert_apply(defn: &Definition) -> References {

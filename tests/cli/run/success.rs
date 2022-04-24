@@ -559,30 +559,13 @@ pub fn assert_apply_with_dockerfile(defn: &TestDefinition) -> References {
 
     let test_dir = test_setup::assert_create_root_dir(defn.name);
 
-    let indented_env_defn =
-        defn.env_defn
-            .lines()
-            .collect::<Vec<&str>>()
-            .join("\n    ");
-
-    let dock_file: &str = &formatdoc!{
-        "
-            schema_version: '0.1'
-            organisation: 'ezanmoto'
-            project: 'dock.test'
-
-            environments:
-              {test_name}:
-                {env_defn}
-        ",
-        test_name = defn.name,
-        env_defn = indented_env_defn,
-    };
+    let dock_file =
+        test_setup::render_dock_file("0.1", defn.name, defn.env_defn);
     let dockerfile_name: &str = &format!("{}.Dockerfile", defn.name);
 
     let fs_state = &hashmap!{
         dockerfile_name => defn.dockerfile,
-        "dock.yaml" => dock_file,
+        "dock.yaml" => &dock_file,
     };
     test_setup::assert_write_fs_state(&test_dir, &fs_state);
 
