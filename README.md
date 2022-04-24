@@ -84,7 +84,8 @@ environments:
       PROXY_FORWARDING: true
 
     enabled:
-    - local_user_group
+    - local_user
+    - local_group
     - nested_docker
     - project_dir
 
@@ -107,10 +108,13 @@ environments:
 * `nested_docker`: This mounts the default local Docker socket file inside the
   container and, inside the container, adds the user to the owner group for the
   socket file.
-* `local_user_group`: This performs "local user mapping", so that the command
-  run inside the container is run with the user ID and group ID of the user
-  running `dock`. Note that these IDs are discovered using the `id` program, and
-  so, a failure may occur if the `id` program isn't found.
+* `local_user`: This performs "local user mapping", so that the command run
+  inside the container is run with the user ID of the user running `dock`. Note
+  that this ID is discovered using the `id` program, and so, a failure may occur
+  if the `id` program isn't found.
+* `local_group`: This is similar to `local_user`, but uses the local user's
+  group ID instead of their user ID. It requires that `local_user` is also
+  enabled.
 * `project_dir`: This mounts the local project directory, i.e. the directory
   that `dock.yaml` is defined in, to the `workdir` path inside the container.
   This also works in "nested" Docker scenarios, as described in the "`mounts`"

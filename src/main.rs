@@ -211,7 +211,8 @@ struct DockEnvironmentConfig {
 #[derive(Debug, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
 enum DockEnvironmentEnabledConfig {
-    LocalUserGroup,
+    LocalUser,
+    LocalGroup,
     NestedDocker,
     ProjectDir,
 }
@@ -603,7 +604,7 @@ enum PrepareRunArgsError {
     ))]
     PrepareRunCacheVolumesArgsFailed{source: PrepareRunCacheVolumesArgsError},
     #[snafu(display(
-        "Couldn't prepare cache volume arguments for `docker run`: {}",
+        "Couldn't prepare \"enabled\" arguments for `docker run`: {}",
         source,
     ))]
     PrepareRunEnabledArgsFailed{source: PrepareRunEnabledArgsError},
@@ -710,16 +711,22 @@ fn prepare_run_enabled_args(
 {
     let mut args = vec![];
 
-    if enabled.contains(&DockEnvironmentEnabledConfig::LocalUserGroup) {
+    if enabled.contains(&DockEnvironmentEnabledConfig::LocalUser) {
         let user_id = run_command("id", &["--user"])
             .context(GetUserIdFailed)?;
 
-        let group_id = run_command("id", &["--group"])
-            .context(GetGroupIdFailed)?;
+        if enabled.contains(&DockEnvironmentEnabledConfig::LocalGroup) {
+            let group_id = run_command("id", &["--group"])
+                .context(GetGroupIdFailed)?;
 
-        let user_group =
-            format!("{}:{}", user_id.trim_end(), group_id.trim_end());
-        args.extend(to_strings(&["--user", &user_group]));
+            let user_group =
+                format!("{}:{}", user_id.trim_end(), group_id.trim_end());
+            args.extend(to_strings(&["--user", &user_group]));
+        } else {
+            args.extend(to_strings(&["--user", &user_id.trim_end()]));
+        }
+    } else if enabled.contains(&DockEnvironmentEnabledConfig::LocalGroup) {
+        return Err(PrepareRunEnabledArgsError::LocalGroupEnabledWithoutUser);
     }
 
     if enabled.contains(&DockEnvironmentEnabledConfig::NestedDocker) {
@@ -763,6 +770,8 @@ enum PrepareRunEnabledArgsError {
     GetUserIdFailed{source: RunCommandError},
     #[snafu(display("Couldn't get group ID for the active user: {}", source))]
     GetGroupIdFailed{source: RunCommandError},
+    #[snafu(display("`local_group` was enabled without `local_user`"))]
+    LocalGroupEnabledWithoutUser,
     #[snafu(display("Couldn't get metadata for Docker socket: {}", source))]
     GetDockerSockMetadataFailed{source: IoError},
     #[snafu(display(

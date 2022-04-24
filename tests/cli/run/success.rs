@@ -360,7 +360,7 @@ fn run_without_local_group() {
 
 #[test]
 // Given (1) the dock file defines an environment called `<env>`
-//     AND (2) `<env>` enables `local_user_group`
+//     AND (2) `<env>` enables `local_user`
 //     AND (3) the container runs as root by default
 //     AND (4) the local user has user ID `<user_id>`
 // When `run <env> id -u` is run
@@ -374,7 +374,7 @@ fn run_with_local_user() {
         // (2)
         indoc!{"
             enabled:
-            - local_user_group
+            - local_user
         "},
         &Definition{
             name: test_name,
@@ -402,7 +402,7 @@ fn run_with_local_user() {
 
 #[test]
 // Given (1) the dock file defines an environment called `<env>`
-//     AND (2) `<env>` enables `local_user_group`
+//     AND (2) `<env>` enables `local_user` and `local_group`
 //     AND (3) the container runs as root by default
 //     AND (4) the local user has group ID `<group_id>`
 // When `run <env> id -g` is run
@@ -416,7 +416,8 @@ fn run_with_local_group() {
         // (2)
         indoc!{"
             enabled:
-            - local_user_group
+            - local_user
+            - local_group
         "},
         &Definition{
             name: test_name,

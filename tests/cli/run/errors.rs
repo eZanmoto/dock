@@ -275,6 +275,39 @@ fn context_contains_absolute_path() {
 
 #[test]
 // Given (1) the dock file defines an environment called `<env>`
+//     AND (2) `<env>` enables `local_group`, but not `local_user`
+// When `run <env> id -g` is run
+// Then (A) the command returns 1
+//     AND (B) the command STDERR highlights that `local_user` is required
+fn run_with_local_group_without_local_user() {
+    let test_name = "run_with_local_group_without_local_user";
+    // (1)
+    let test = test_setup::assert_apply_with_dock_yaml(
+        // (2)
+        indoc!{"
+            enabled:
+            - local_group
+        "},
+        &Definition{
+            name: test_name,
+            fs: &hashmap!{},
+            dockerfile_steps: "",
+        },
+    );
+    docker::assert_remove_image(&test.image_tagged_name);
+
+    let cmd_result =
+        success::run_test_cmd(&test.dir, &[test_name, "id", "-g"]);
+
+    cmd_result
+        // (A)
+        .code(1)
+        // (B)
+        .stderr(predicate_str::contains("without `local_user`"));
+}
+
+#[test]
+// Given (1) the dock file defines an environment called `<env>`
 //     AND (2) `<env>`'s Dockerfile installs a Docker client
 //     AND (3) `<env>` doesn't enable `nested_docker`
 // When `run <env> docker version` is run
