@@ -526,44 +526,15 @@ fn prepare_run_args(
     let mut run_args = to_strings(&["run", "--rm"]);
 
     if let Some(cache_volumes) = &env.cache_volumes {
-        for (name, path) in cache_volumes.iter() {
-            let path_abs_path = abs_path_from_path_buf(path)
-                .context(CacheVolDirAsAbsPathFailed)?;
+        let args = prepare_run_cache_volumes_args(
+            cache_volumes,
+            proj,
+            env_name,
+            &target_img,
+        )
+            .context(PrepareRunCacheVolumesArgsFailed)?;
 
-            let path_cli_arg = abs_path_display(&path_abs_path)
-                .context(RenderCacheVolDirFailed{dir: path_abs_path})?;
-
-            let vol_name = format!(
-                "{}.{}.{}.cache.{}",
-                proj.org,
-                proj.name,
-                env_name,
-                name,
-            );
-            let mount_spec =
-                format!("type=volume,src={},dst={}", vol_name, path_cli_arg);
-            let mount_arg = format!("--mount={}", mount_spec);
-
-            docker::assert_run(&[
-                "run",
-                "--rm",
-                "--user=root",
-                &mount_arg,
-                &target_img,
-                "chmod",
-                // We would ideally use `--recursive` instead of `-R` in order
-                // to be more explicit, but in practice, `-R` has been found to
-                // be available in more `chmod` implementations (notably, the
-                // implementation used in `busybox`/`alpine` doesn't support
-                // `--recursive`).
-                "-R",
-                "0777",
-                &path_cli_arg,
-            ])
-                .context(ChangeCacheOwnershipFailed)?;
-
-            run_args.push(mount_arg);
-        }
+        run_args.extend(args);
     }
 
     if let Some(args) = &env.args {
@@ -584,48 +555,15 @@ fn prepare_run_args(
         .context(GetHostpathsFailed)?;
 
     if let Some(enabled) = &env.enabled {
-        if enabled.contains(&DockEnvironmentEnabledConfig::LocalUserGroup) {
-            let user_id = run_command("id", &["--user"])
-                .context(GetUserIdFailed)?;
+        let args = prepare_run_enabled_args(
+            enabled,
+            dock_dir,
+            &cur_hostpaths,
+            &env.workdir,
+        )
+            .context(PrepareRunEnabledArgsFailed)?;
 
-            let group_id = run_command("id", &["--group"])
-                .context(GetGroupIdFailed)?;
-
-            let user_group =
-                format!("{}:{}", user_id.trim_end(), group_id.trim_end());
-            run_args.extend(to_strings(&["--user", &user_group]));
-        }
-
-        if enabled.contains(&DockEnvironmentEnabledConfig::NestedDocker) {
-            let meta = std_fs::metadata(DOCKER_SOCK_PATH)
-                .context(GetDockerSockMetadataFailed)?;
-
-            let mount_spec = format!(
-                "type=bind,src={docker_sock_path},dst={docker_sock_path}",
-                docker_sock_path = DOCKER_SOCK_PATH,
-            );
-            run_args.extend(to_strings(&[
-                &format!("--mount={}", mount_spec),
-                &format!("--group-add={}", meta.gid()),
-            ]));
-        }
-
-        if enabled.contains(&DockEnvironmentEnabledConfig::ProjectDir) {
-            // TODO Add `cur_hostpaths` to the error context. See the comment
-            // above `NoPathRouteOnHost` for more details.
-            let proj_dir_host_path = apply_hostpath(&cur_hostpaths, &dock_dir)
-                .context(NoProjectPathRouteOnHost{attempted_path: dock_dir})?;
-
-            let proj_dir_cli_arg = abs_path_display(&proj_dir_host_path)
-                .context(RenderProjectDirFailed{dir: proj_dir_host_path})?;
-
-            let workdir = env.workdir.as_ref()
-                .context(WorkdirNotSet)?;
-
-            let mount_spec =
-                format!( "type=bind,src={},dst={}", proj_dir_cli_arg, workdir);
-            run_args.push(format!("--mount={}", mount_spec));
-        }
+        run_args.extend(args);
     }
 
     if let Some(mounts) = &env.mounts {
@@ -660,30 +598,15 @@ const DOCKER_SOCK_PATH: &str = "/var/run/docker.sock";
 #[derive(Debug, Snafu)]
 enum PrepareRunArgsError {
     #[snafu(display(
-        "Couldn't convert the cache volume directory to an absolute path: {}",
+        "Couldn't prepare cache volume arguments for `docker run`: {}",
         source,
     ))]
-    CacheVolDirAsAbsPathFailed{source: NewAbsPathError},
+    PrepareRunCacheVolumesArgsFailed{source: PrepareRunCacheVolumesArgsError},
     #[snafu(display(
-        "Couldn't render the cache volume directory (lossy rendering: '{}')",
-        abs_path_display_lossy(dir),
+        "Couldn't prepare cache volume arguments for `docker run`: {}",
+        source,
     ))]
-    RenderCacheVolDirFailed{dir: AbsPath},
-    #[snafu(display("Couldn't set the ownership of the cache: {}", source))]
-    ChangeCacheOwnershipFailed{source: DockerAssertRunError},
-    #[snafu(display("Couldn't get user ID for the active user: {}", source))]
-    GetUserIdFailed{source: RunCommandError},
-    #[snafu(display("Couldn't get group ID for the active user: {}", source))]
-    GetGroupIdFailed{source: RunCommandError},
-    #[snafu(display("Couldn't get metadata for Docker socket: {}", source))]
-    GetDockerSockMetadataFailed{source: IoError},
-    #[snafu(display("`workdir` is required when `project_dir` is enabled"))]
-    WorkdirNotSet,
-    #[snafu(display(
-        "Couldn't render the project directory (lossy rendering: '{}')",
-        abs_path_display_lossy(dir),
-    ))]
-    RenderProjectDirFailed{dir: AbsPath},
+    PrepareRunEnabledArgsFailed{source: PrepareRunEnabledArgsError},
     #[snafu(display(
         "Couldn't parse `mount` configuration for '{}' -> '{}' mapping: {}",
         source,
@@ -698,17 +621,162 @@ enum PrepareRunArgsError {
     #[snafu(display("Couldn't get hostpaths: {}", source))]
     GetHostpathsFailed{source: HostpathsError},
     #[snafu(display(
-        "No route to the project path '{}' was found on the host",
-        abs_path_display_lossy(attempted_path),
-    ))]
-    NoProjectPathRouteOnHost{
-        attempted_path: AbsPath,
-    },
-    #[snafu(display(
         "Couldn't prepare \"mount\" arguments for `docker run`: {}",
         source,
     ))]
     PrepareRunMountArgsFailed{source: PrepareRunMountArgsError},
+}
+
+// TODO This method doesn't just prepare the cache volume arguments for the
+// `docker run` command, but also creates the volumes (if they don't exist) and
+// changes their permissions. This responsibility should ideally be moved to a
+// dedicated function of its own.
+fn prepare_run_cache_volumes_args(
+    cache_volumes: &HashMap<String, PathBuf>,
+    proj: &Project,
+    env_name: &str,
+    target_img: &str,
+)
+    -> Result<Vec<String>, PrepareRunCacheVolumesArgsError>
+{
+    let mut args = vec![];
+
+    for (name, path) in cache_volumes.iter() {
+        let path_abs_path = abs_path_from_path_buf(path)
+            .context(CacheVolDirAsAbsPathFailed)?;
+
+        let path_cli_arg = abs_path_display(&path_abs_path)
+            .context(RenderCacheVolDirFailed{dir: path_abs_path})?;
+
+        let vol_name = format!(
+            "{}.{}.{}.cache.{}",
+            proj.org,
+            proj.name,
+            env_name,
+            name,
+        );
+        let mount_spec =
+            format!("type=volume,src={},dst={}", vol_name, path_cli_arg);
+        let mount_arg = format!("--mount={}", mount_spec);
+
+        docker::assert_run(&[
+            "run",
+            "--rm",
+            "--user=root",
+            &mount_arg,
+            target_img,
+            "chmod",
+            // We would ideally use `--recursive` instead of `-R` in order
+            // to be more explicit, but in practice, `-R` has been found to
+            // be available in more `chmod` implementations (notably, the
+            // implementation used in `busybox`/`alpine` doesn't support
+            // `--recursive`).
+            "-R",
+            "0777",
+            &path_cli_arg,
+        ])
+            .context(ChangeCacheOwnershipFailed)?;
+
+        args.push(mount_arg);
+    }
+
+    Ok(args)
+}
+
+#[allow(clippy::enum_variant_names)]
+#[derive(Debug, Snafu)]
+enum PrepareRunCacheVolumesArgsError {
+    #[snafu(display(
+        "Couldn't convert the cache volume directory to an absolute path: {}",
+        source,
+    ))]
+    CacheVolDirAsAbsPathFailed{source: NewAbsPathError},
+    #[snafu(display(
+        "Couldn't render the cache volume directory (lossy rendering: '{}')",
+        abs_path_display_lossy(dir),
+    ))]
+    RenderCacheVolDirFailed{dir: AbsPath},
+    #[snafu(display("Couldn't set the ownership of the cache: {}", source))]
+    ChangeCacheOwnershipFailed{source: DockerAssertRunError},
+}
+
+fn prepare_run_enabled_args(
+    enabled: &[DockEnvironmentEnabledConfig],
+    dock_dir: AbsPathRef,
+    cur_hostpaths: &Option<Hostpaths>,
+    workdir: &Option<String>,
+)
+    -> Result<Vec<String>, PrepareRunEnabledArgsError>
+{
+    let mut args = vec![];
+
+    if enabled.contains(&DockEnvironmentEnabledConfig::LocalUserGroup) {
+        let user_id = run_command("id", &["--user"])
+            .context(GetUserIdFailed)?;
+
+        let group_id = run_command("id", &["--group"])
+            .context(GetGroupIdFailed)?;
+
+        let user_group =
+            format!("{}:{}", user_id.trim_end(), group_id.trim_end());
+        args.extend(to_strings(&["--user", &user_group]));
+    }
+
+    if enabled.contains(&DockEnvironmentEnabledConfig::NestedDocker) {
+        let meta = std_fs::metadata(DOCKER_SOCK_PATH)
+            .context(GetDockerSockMetadataFailed)?;
+
+        let mount_spec = format!(
+            "type=bind,src={docker_sock_path},dst={docker_sock_path}",
+            docker_sock_path = DOCKER_SOCK_PATH,
+        );
+        args.extend(to_strings(&[
+            &format!("--mount={}", mount_spec),
+            &format!("--group-add={}", meta.gid()),
+        ]));
+    }
+
+    if enabled.contains(&DockEnvironmentEnabledConfig::ProjectDir) {
+        // TODO Add `cur_hostpaths` to the error context. See the comment
+        // above `NoPathRouteOnHost` for more details.
+        let proj_dir_host_path = apply_hostpath(&cur_hostpaths, &dock_dir)
+            .context(NoProjectPathRouteOnHost{attempted_path: dock_dir})?;
+
+        let proj_dir_cli_arg = abs_path_display(&proj_dir_host_path)
+            .context(RenderProjectDirFailed{dir: proj_dir_host_path})?;
+
+        let workdir = workdir.as_ref()
+            .context(WorkdirNotSet)?;
+
+        let mount_spec =
+            format!( "type=bind,src={},dst={}", proj_dir_cli_arg, workdir);
+        args.push(format!("--mount={}", mount_spec));
+    }
+
+    Ok(args)
+}
+
+#[allow(clippy::enum_variant_names)]
+#[derive(Debug, Snafu)]
+enum PrepareRunEnabledArgsError {
+    #[snafu(display("Couldn't get user ID for the active user: {}", source))]
+    GetUserIdFailed{source: RunCommandError},
+    #[snafu(display("Couldn't get group ID for the active user: {}", source))]
+    GetGroupIdFailed{source: RunCommandError},
+    #[snafu(display("Couldn't get metadata for Docker socket: {}", source))]
+    GetDockerSockMetadataFailed{source: IoError},
+    #[snafu(display(
+        "No route to the project path '{}' was found on the host",
+        abs_path_display_lossy(attempted_path),
+    ))]
+    NoProjectPathRouteOnHost{attempted_path: AbsPath},
+    #[snafu(display(
+        "Couldn't render the project directory (lossy rendering: '{}')",
+        abs_path_display_lossy(dir),
+    ))]
+    RenderProjectDirFailed{dir: AbsPath},
+    #[snafu(display("`workdir` is required when `project_dir` is enabled"))]
+    WorkdirNotSet,
 }
 
 fn to_strings(strs: &[&str]) -> Vec<String> {
