@@ -317,7 +317,7 @@ fn run_with_local_group_without_local_user() {
 fn run_without_nested_docker() {
     let test_name = "run_without_nested_docker";
     // (1)
-    let test = success::assert_apply(&TestDefinition{
+    let test = success::assert_apply_with_dockerfile(&TestDefinition{
         name: test_name,
         // (2)
         dockerfile: "FROM docker:19.03.8",

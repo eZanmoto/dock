@@ -526,7 +526,7 @@ fn run_with_specific_user() {
 fn run_with_nested_docker() {
     let test_name = "run_with_nested_docker";
     // (1)
-    let test = assert_apply(&TestDefinition{
+    let test = assert_apply_with_dockerfile(&TestDefinition{
         name: test_name,
         // (2)
         dockerfile: indoc!{"
@@ -552,7 +552,7 @@ fn run_with_nested_docker() {
     docker::assert_image_exists(&test.image_tagged_name);
 }
 
-pub fn assert_apply(defn: &TestDefinition) -> References {
+pub fn assert_apply_with_dockerfile(defn: &TestDefinition) -> References {
     // NOTE There is a lot of duplication between this function and
     // `tests::test_setup::assert_apply_with_dock_yaml`; this should ideally be
     // abstracted if an appropriate abstraction presents itself.
