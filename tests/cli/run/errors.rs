@@ -474,3 +474,31 @@ fn manual_volume_has_root_permission() {
         // (C)
         .stdout("");
 }
+
+#[test]
+// Given (1) the dock file specifies an unsupported `schema_version`
+// When `run <env> true` is run
+// Then (A) the command returns an exit code of 1
+//     AND (B) the command STDERR contains "`workdir` is required"
+fn unsupported_schema_version() {
+    let test_name = "unsupported_schema_version";
+    let test = test_setup::assert_apply_with_schema_version(
+        // (1)
+        "100.0",
+        "{}",
+        &Definition{
+            name: test_name,
+            dockerfile_steps: "",
+            fs: &hashmap!{},
+        },
+    );
+    docker::assert_remove_image(&test.image_tagged_name);
+
+    let cmd_result = success::run_test_cmd(&test.dir, &[test_name, "true"]);
+
+    cmd_result
+        // (A)
+        .code(1)
+        // (B)
+        .stderr(predicate_str::contains("Only `schema_version` 0.1"));
+}

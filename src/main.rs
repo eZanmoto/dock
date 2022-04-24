@@ -28,6 +28,7 @@ use std::str::Utf8Error;
 
 extern crate clap;
 extern crate serde;
+extern crate serde_yaml;
 extern crate snafu;
 
 use clap::App;
@@ -36,6 +37,7 @@ use clap::Arg;
 use clap::ArgMatches;
 use clap::SubCommand;
 use serde::Deserialize;
+use serde_yaml::Value;
 use snafu::ResultExt;
 use snafu::OptionExt;
 use snafu::Snafu;
@@ -190,6 +192,7 @@ fn index_of_first_unsupported_flag(args: &[&str]) -> Option<usize> {
 
 #[derive(Debug, Deserialize)]
 struct DockConfig {
+    schema_version: String,
     organisation: String,
     project: String,
     environments: HashMap<String, DockEnvironmentConfig>
@@ -245,13 +248,37 @@ fn run(dock_file_name: &str, args: &ArgMatches) -> i32 {
             },
         };
 
-    let conf: DockConfig =
+    let conf_value: Value =
         match serde_yaml::from_reader(conf_reader) {
             Ok(v) => {
                 v
             },
             Err(e) => {
                 eprintln!("couldn't parse `{}`: {}", dock_file_name, e);
+                return 1;
+            },
+        };
+
+    if let Some(vsn) = conf_value.get("schema_version") {
+        if vsn != "0.1" {
+            eprintln!(
+                "Only `schema_version` 0.1 is currently supported for `{}`",
+                dock_file_name,
+            );
+            return 1;
+        }
+    } else {
+        eprintln!("`{}` is missing `schema_version`", dock_file_name);
+        return 1;
+    }
+
+    let conf: DockConfig =
+        match serde_yaml::from_value(conf_value) {
+            Ok(v) => {
+                v
+            },
+            Err(e) => {
+                eprintln!("couldn't convert `{}`: {}", dock_file_name, e);
                 return 1;
             },
         };

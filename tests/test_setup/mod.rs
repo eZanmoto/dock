@@ -21,6 +21,14 @@ pub fn assert_apply_with_dock_yaml(
     env_defn: &str,
     defn: &Definition,
 ) -> References {
+    assert_apply_with_schema_version("0.1", env_defn, defn)
+}
+
+pub fn assert_apply_with_schema_version(
+    schema_vsn: &str,
+    env_defn: &str,
+    defn: &Definition,
+) -> References {
     let mut fs_state = defn.fs.clone();
 
     let indented_env_defn =
@@ -31,6 +39,7 @@ pub fn assert_apply_with_dock_yaml(
 
     let dock_yaml = &formatdoc!{
         "
+            schema_version: '{schema_vsn}'
             organisation: '{test_org}'
             project: '{test_proj}'
 
@@ -38,6 +47,7 @@ pub fn assert_apply_with_dock_yaml(
               {test_name}:
                 {env_defn}
         ",
+        schema_vsn = schema_vsn,
         test_name = defn.name,
         env_defn = indented_env_defn,
         test_org = TEST_ORG,

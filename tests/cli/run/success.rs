@@ -567,6 +567,7 @@ pub fn assert_apply(defn: &TestDefinition) -> References {
 
     let dock_file: &str = &formatdoc!{
         "
+            schema_version: '0.1'
             organisation: 'ezanmoto'
             project: 'dock.test'
 

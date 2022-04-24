@@ -47,6 +47,7 @@ the following definition of a project whose build environment is defined in a
 separate `build.Dockerfile`, and which also has the following `dock.yaml:
 
 ``` yaml
+schema_version: '0.1'
 organisation: 'ezanmoto'
 project: 'dock'
 
@@ -69,6 +70,7 @@ Extra parameters can be provided to the underlying `docker run` command using
 the environment block. All fields in the environment block are optional.
 
 ``` yaml
+schema_version: '0.1'
 organisation: 'ezanmoto'
 project: 'dock'
 
