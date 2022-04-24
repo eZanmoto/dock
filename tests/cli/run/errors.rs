@@ -275,18 +275,18 @@ fn context_contains_absolute_path() {
 
 #[test]
 // Given (1) the dock file defines an environment called `<env>`
-//     AND (2) `<env>` enables `local_group`, but not `local_user`
+//     AND (2) `<env>` enables `group`, but not `user`
 // When `run <env> id -g` is run
 // Then (A) the command returns 1
-//     AND (B) the command STDERR highlights that `local_user` is required
+//     AND (B) the command STDERR highlights that `user` is required
 fn run_with_local_group_without_local_user() {
     let test_name = "run_with_local_group_without_local_user";
     // (1)
     let test = test_setup::assert_apply_with_dock_yaml(
         // (2)
         indoc!{"
-            enabled:
-            - local_group
+            mount_local:
+            - group
         "},
         &Definition{
             name: test_name,
@@ -303,7 +303,7 @@ fn run_with_local_group_without_local_user() {
         // (A)
         .code(1)
         // (B)
-        .stderr(predicate_str::contains("without `local_user`"));
+        .stderr(predicate_str::contains("`group` was mounted without `user`"));
 }
 
 #[test]
@@ -352,7 +352,7 @@ fn project_dir_without_workdir() {
     let test = test_setup::assert_apply_with_dock_yaml(
         // (2) (3)
         indoc!{"
-            enabled:
+            mount_local:
             - project_dir
         "},
         &Definition{

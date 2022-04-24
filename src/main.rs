@@ -205,16 +205,16 @@ struct DockEnvironmentConfig {
     env: Option<HashMap<String, String>>,
     cache_volumes: Option<HashMap<String, PathBuf>>,
     mounts: Option<HashMap<PathBuf, PathBuf>>,
-    enabled: Option<Vec<DockEnvironmentEnabledConfig>>,
+    mount_local: Option<Vec<DockEnvironmentMountLocalConfig>>,
 }
 
 #[derive(Debug, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
-enum DockEnvironmentEnabledConfig {
-    LocalUser,
-    LocalGroup,
-    NestedDocker,
+enum DockEnvironmentMountLocalConfig {
+    User,
+    Group,
     ProjectDir,
+    Docker,
 }
 
 fn run(dock_file_name: &str, args: &ArgMatches) -> i32 {
@@ -555,14 +555,14 @@ fn prepare_run_args(
     let cur_hostpaths = hostpaths()
         .context(GetHostpathsFailed)?;
 
-    if let Some(enabled) = &env.enabled {
-        let args = prepare_run_enabled_args(
-            enabled,
+    if let Some(mount_local) = &env.mount_local {
+        let args = prepare_run_mount_local_args(
+            mount_local,
             dock_dir,
             &cur_hostpaths,
             &env.workdir,
         )
-            .context(PrepareRunEnabledArgsFailed)?;
+            .context(PrepareRunMountLocalArgsFailed)?;
 
         run_args.extend(args);
     }
@@ -604,10 +604,10 @@ enum PrepareRunArgsError {
     ))]
     PrepareRunCacheVolumesArgsFailed{source: PrepareRunCacheVolumesArgsError},
     #[snafu(display(
-        "Couldn't prepare \"enabled\" arguments for `docker run`: {}",
+        "Couldn't prepare \"local mount\" arguments for `docker run`: {}",
         source,
     ))]
-    PrepareRunEnabledArgsFailed{source: PrepareRunEnabledArgsError},
+    PrepareRunMountLocalArgsFailed{source: PrepareRunMountLocalArgsError},
     #[snafu(display(
         "Couldn't parse `mount` configuration for '{}' -> '{}' mapping: {}",
         source,
@@ -701,21 +701,21 @@ enum PrepareRunCacheVolumesArgsError {
     ChangeCacheOwnershipFailed{source: DockerAssertRunError},
 }
 
-fn prepare_run_enabled_args(
-    enabled: &[DockEnvironmentEnabledConfig],
+fn prepare_run_mount_local_args(
+    mount_local: &[DockEnvironmentMountLocalConfig],
     dock_dir: AbsPathRef,
     cur_hostpaths: &Option<Hostpaths>,
     workdir: &Option<String>,
 )
-    -> Result<Vec<String>, PrepareRunEnabledArgsError>
+    -> Result<Vec<String>, PrepareRunMountLocalArgsError>
 {
     let mut args = vec![];
 
-    if enabled.contains(&DockEnvironmentEnabledConfig::LocalUser) {
+    if mount_local.contains(&DockEnvironmentMountLocalConfig::User) {
         let user_id = run_command("id", &["--user"])
             .context(GetUserIdFailed)?;
 
-        if enabled.contains(&DockEnvironmentEnabledConfig::LocalGroup) {
+        if mount_local.contains(&DockEnvironmentMountLocalConfig::Group) {
             let group_id = run_command("id", &["--group"])
                 .context(GetGroupIdFailed)?;
 
@@ -725,11 +725,11 @@ fn prepare_run_enabled_args(
         } else {
             args.extend(to_strings(&["--user", &user_id.trim_end()]));
         }
-    } else if enabled.contains(&DockEnvironmentEnabledConfig::LocalGroup) {
-        return Err(PrepareRunEnabledArgsError::LocalGroupEnabledWithoutUser);
+    } else if mount_local.contains(&DockEnvironmentMountLocalConfig::Group) {
+        return Err(PrepareRunMountLocalArgsError::GroupMountedWithoutUser);
     }
 
-    if enabled.contains(&DockEnvironmentEnabledConfig::NestedDocker) {
+    if mount_local.contains(&DockEnvironmentMountLocalConfig::Docker) {
         let meta = std_fs::metadata(DOCKER_SOCK_PATH)
             .context(GetDockerSockMetadataFailed)?;
 
@@ -743,7 +743,7 @@ fn prepare_run_enabled_args(
         ]));
     }
 
-    if enabled.contains(&DockEnvironmentEnabledConfig::ProjectDir) {
+    if mount_local.contains(&DockEnvironmentMountLocalConfig::ProjectDir) {
         // TODO Add `cur_hostpaths` to the error context. See the comment
         // above `NoPathRouteOnHost` for more details.
         let proj_dir_host_path = apply_hostpath(&cur_hostpaths, &dock_dir)
@@ -765,13 +765,13 @@ fn prepare_run_enabled_args(
 
 #[allow(clippy::enum_variant_names)]
 #[derive(Debug, Snafu)]
-enum PrepareRunEnabledArgsError {
+enum PrepareRunMountLocalArgsError {
     #[snafu(display("Couldn't get user ID for the active user: {}", source))]
     GetUserIdFailed{source: RunCommandError},
     #[snafu(display("Couldn't get group ID for the active user: {}", source))]
     GetGroupIdFailed{source: RunCommandError},
-    #[snafu(display("`local_group` was enabled without `local_user`"))]
-    LocalGroupEnabledWithoutUser,
+    #[snafu(display("local `group` was mounted without `user`"))]
+    GroupMountedWithoutUser,
     #[snafu(display("Couldn't get metadata for Docker socket: {}", source))]
     GetDockerSockMetadataFailed{source: IoError},
     #[snafu(display(
@@ -784,7 +784,7 @@ enum PrepareRunEnabledArgsError {
         abs_path_display_lossy(dir),
     ))]
     RenderProjectDirFailed{dir: AbsPath},
-    #[snafu(display("`workdir` is required when `project_dir` is enabled"))]
+    #[snafu(display("`workdir` is required when `project_dir` is mounted"))]
     WorkdirNotSet,
 }
 

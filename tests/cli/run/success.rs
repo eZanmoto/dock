@@ -360,7 +360,7 @@ fn run_without_local_group() {
 
 #[test]
 // Given (1) the dock file defines an environment called `<env>`
-//     AND (2) `<env>` enables `local_user`
+//     AND (2) `<env>` enables `user`
 //     AND (3) the container runs as root by default
 //     AND (4) the local user has user ID `<user_id>`
 // When `run <env> id -u` is run
@@ -373,8 +373,8 @@ fn run_with_local_user() {
     let test = test_setup::assert_apply_with_dock_yaml(
         // (2)
         indoc!{"
-            enabled:
-            - local_user
+            mount_local:
+            - user
         "},
         &Definition{
             name: test_name,
@@ -402,7 +402,7 @@ fn run_with_local_user() {
 
 #[test]
 // Given (1) the dock file defines an environment called `<env>`
-//     AND (2) `<env>` enables `local_user` and `local_group`
+//     AND (2) `<env>` enables `user` and `group`
 //     AND (3) the container runs as root by default
 //     AND (4) the local user has group ID `<group_id>`
 // When `run <env> id -g` is run
@@ -415,9 +415,9 @@ fn run_with_local_group() {
     let test = test_setup::assert_apply_with_dock_yaml(
         // (2)
         indoc!{"
-            enabled:
-            - local_user
-            - local_group
+            mount_local:
+            - user
+            - group
         "},
         &Definition{
             name: test_name,
@@ -534,8 +534,8 @@ fn run_with_nested_docker() {
         "},
         // (3)
         env_defn: indoc!{"
-            enabled:
-            - nested_docker
+            mount_local:
+            - docker
         "},
     });
     docker::assert_remove_image(&test.image_tagged_name);
@@ -776,7 +776,7 @@ fn project_dir() {
         // (2) (3)
         indoc!{"
             workdir: '/a/b'
-            enabled:
+            mount_local:
             - project_dir
         "},
         &Definition{
