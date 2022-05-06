@@ -38,6 +38,7 @@ check_intg: clean_images $(tgt_test_dir)
 		TEST_PROJ='$(test_proj).test' \
 		cargo test \
 			-- \
+			--nocapture \
 			--show-output \
 			$(TESTS)
 	# Descendents of the test base image indicate that `dock` didn't clean up
