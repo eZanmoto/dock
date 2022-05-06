@@ -14,7 +14,7 @@ pub fn assert_run_stdout(prog: &str, args: &[&str]) -> String {
     let result = cmd.assert().code(0);
     let stdout = &result.get_output().stdout;
 
-    str::from_utf8(&stdout)
+    str::from_utf8(stdout)
         .expect("couldn't decode STDOUT as UTF-8")
         .to_string()
 }

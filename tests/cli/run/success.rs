@@ -302,7 +302,7 @@ fn run_without_local_user() {
     let test = test_setup::assert_apply_with_empty_dock_yaml(&Definition{
         name: test_name,
         // (2)
-        dockerfile_steps: &indoc!{"
+        dockerfile_steps: indoc!{"
             USER root
         "},
         fs: &hashmap!{},
@@ -337,7 +337,7 @@ fn run_without_local_group() {
     let test = test_setup::assert_apply_with_empty_dock_yaml(&Definition{
         name: test_name,
         // (2)
-        dockerfile_steps: &indoc!{"
+        dockerfile_steps: indoc!{"
             USER root
         "},
         fs: &hashmap!{},
@@ -380,7 +380,7 @@ fn run_with_local_user() {
             name: test_name,
             fs: &hashmap!{},
             // (3)
-            dockerfile_steps: &indoc!{"
+            dockerfile_steps: indoc!{"
                 USER root
             "},
         },
@@ -423,7 +423,7 @@ fn run_with_local_group() {
             name: test_name,
             fs: &hashmap!{},
             // (3)
-            dockerfile_steps: &indoc!{"
+            dockerfile_steps: indoc!{"
                 USER root
             "},
         },
@@ -567,7 +567,7 @@ pub fn assert_apply_with_dockerfile(defn: &TestDefinition) -> References {
         dockerfile_name => defn.dockerfile,
         "dock.yaml" => &dock_file,
     };
-    test_setup::assert_write_fs_state(&test_dir, &fs_state);
+    test_setup::assert_write_fs_state(&test_dir, fs_state);
 
     let image_tagged_name =
         format!("{}.{}:latest", test_setup::IMAGE_NAME_ROOT, defn.name);

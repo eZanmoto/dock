@@ -11,7 +11,7 @@ use crate::assert_run;
 
 pub fn assert_remove_image(image_tagged_name: &str) {
     let mut cmd = Command::new("docker");
-    cmd.args(vec!["rmi", &image_tagged_name]);
+    cmd.args(vec!["rmi", image_tagged_name]);
     cmd.env_clear();
 
     let output = cmd.output()
@@ -32,9 +32,7 @@ pub fn assert_remove_image(image_tagged_name: &str) {
 
     let allowable_stderr =
         format!("Error: No such image: {}\n", image_tagged_name);
-    if stderr != allowable_stderr {
-        panic!("unexpected stderr: {:?}", output);
-    }
+    assert!(stderr == allowable_stderr, "unexpected stderr: {:?}", output);
 }
 
 pub fn assert_image_exists(image_tagged_name: &str) {
@@ -77,12 +75,12 @@ pub fn assert_no_containers_from_image(tagged_name: &str) {
         ],
     );
 
-    assert!(stdout == "", "stdout is not empty: {}", stdout);
+    assert!(stdout.is_empty(), "stdout is not empty: {}", stdout);
 }
 
 pub fn assert_remove_volume(name: &str) {
     let mut cmd = Command::new("docker");
-    cmd.args(vec!["volume", "rm", &name]);
+    cmd.args(vec!["volume", "rm", name]);
     cmd.env_clear();
 
     let output = cmd.output()
@@ -101,9 +99,6 @@ pub fn assert_remove_volume(name: &str) {
             name,
         ));
 
-    let allowable_stderr =
-        format!("Error: No such volume: {}\n", name);
-    if stderr != allowable_stderr {
-        panic!("unexpected stderr: {:?}", output);
-    }
+    let allowable_stderr = format!("Error: No such volume: {}\n", name);
+    assert!(stderr == allowable_stderr, "unexpected stderr: {:?}", output);
 }

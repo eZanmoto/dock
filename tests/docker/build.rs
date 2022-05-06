@@ -49,7 +49,7 @@ impl DockerBuild {
 
         lines.assert_eof()?;
 
-        Ok(Some(DockerBuild{layers, tagged_name}))
+        Ok(Some(DockerBuild{tagged_name, layers}))
     }
 
     pub fn tagged_name(&self) -> &str {

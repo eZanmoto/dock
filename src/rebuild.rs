@@ -100,7 +100,7 @@ where
     }
 }
 
-#[allow(clippy::pub_enum_variant_names)]
+#[allow(clippy::enum_variant_names)]
 #[derive(Debug, Snafu)]
 pub enum RebuildError<T, E>
 where
@@ -188,7 +188,7 @@ pub fn rebuild_with_captured_output(
     )
 }
 
-#[allow(clippy::pub_enum_variant_names)]
+#[allow(clippy::enum_variant_names)]
 #[derive(Debug, Snafu)]
 pub enum RebuildWithCapturedOutputError {
     #[snafu(display("Couldn't spawn `docker` with piped output: {}", source))]

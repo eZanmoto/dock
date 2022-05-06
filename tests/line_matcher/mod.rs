@@ -89,7 +89,7 @@ impl<'a> LineMatcher<'a> {
     /// # Errors
     ///
     /// Will return `Err` if the stream has more lines.
-    pub fn skip_if_starts_with<'b>(&mut self, prefix: &'b str) -> bool {
+    pub fn skip_if_starts_with(&mut self, prefix: &str) -> bool {
         let line =
             if let Some(ln) = self.peek() {
                 ln
@@ -121,7 +121,7 @@ impl<'a> LineMatcher<'a> {
         self.assert_prefix(prefix)
     }
 
-    pub fn skip_if_not_starts_with<'b>(&mut self, prefix: &'b str) -> bool {
+    pub fn skip_if_not_starts_with(&mut self, prefix: &str) -> bool {
         let line =
             if let Some(ln) = self.peek() {
                 ln

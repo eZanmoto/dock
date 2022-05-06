@@ -50,7 +50,7 @@ fn run_with_build_failure() {
             .stderr(exp);
     let stdout = rebuild_success::new_str_from_cmd_stdout(&cmd_result);
     // (C)
-    rebuild_success::assert_docker_build_stdout(&stdout);
+    rebuild_success::assert_docker_build_stdout(stdout);
     // (D)
     docker::assert_image_doesnt_exist(&test.image_tagged_name);
 }

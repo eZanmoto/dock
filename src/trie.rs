@@ -86,7 +86,7 @@ impl<K: Clone + Eq + Hash, V> Trie<K, V> {
 
             let cur_dir = &self.dirs[dir_index];
 
-            let node = cur_dir.get(&k)?;
+            let node = cur_dir.get(k)?;
 
             match node {
                 Node::DirIndex(i) => {

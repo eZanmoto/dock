@@ -59,7 +59,7 @@ const ENV_FLAG: &str = "env";
 
 fn main() {
     let rebuild_about: &str =
-        &"Replace a tagged Docker image with a new build".to_string();
+        "Replace a tagged Docker image with a new build";
 
     let dock_file_name = "dock.yaml";
     let run_about: &str = &format!(
@@ -143,7 +143,7 @@ fn rebuild(target_img: &str, docker_args: Vec<&str>) -> i32 {
     }
 
     let rebuild_result = rebuild::rebuild_with_streaming_output(
-        &target_img,
+        target_img,
         docker_args,
     );
     match rebuild_result {
@@ -190,7 +190,7 @@ fn index_of_first_unsupported_flag(args: &[&str]) -> Option<usize> {
     None
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 struct DockConfig {
     schema_version: String,
     organisation: String,
@@ -283,6 +283,12 @@ fn run(dock_file_name: &str, args: &ArgMatches) -> i32 {
             },
         };
 
+    // `schema_version` isn't used after the configuration has been
+    // deserialised, but we assign it to an unused variable to prevent Clippy
+    // from alerting us about the unused field.
+    #[allow(clippy::no_effect_underscore_binding)]
+    let _vsn = conf.schema_version;
+
     let env_name = args.value_of(ENV_FLAG).unwrap();
 
     let env =
@@ -351,7 +357,7 @@ fn handle_rebuild_for_run(
 
     let docker_rebuild_input_result = new_docker_rebuild_input(
         dock_dir,
-        &dockerfile_path.as_path(),
+        dockerfile_path.as_path(),
         maybe_context_sub_path,
     );
     let docker_rebuild_input =
@@ -480,7 +486,7 @@ fn handle_run_rebuild_result(
 }
 
 fn handle_run_for_run(
-    dock_dir: &PathBuf,
+    dock_dir: &Path,
     args: &ArgMatches,
     proj: &Project,
     env_name: &str,
@@ -497,7 +503,7 @@ fn handle_run_for_run(
         };
 
     let dock_dir =
-        match abs_path_from_path_buf(&dock_dir) {
+        match abs_path_from_path_buf(dock_dir) {
             Ok(v) => {
                 v
             },
@@ -615,7 +621,7 @@ fn prepare_run_args(
 
     run_args.push(target_img);
 
-    run_args.extend(to_strings(&extra_args));
+    run_args.extend(to_strings(extra_args));
 
     Ok(run_args)
 }
@@ -750,7 +756,7 @@ fn prepare_run_mount_local_args(
                 format!("{}:{}", user_id.trim_end(), group_id.trim_end());
             args.extend(to_strings(&["--user", &user_group]));
         } else {
-            args.extend(to_strings(&["--user", &user_id.trim_end()]));
+            args.extend(to_strings(&["--user", user_id.trim_end()]));
         }
     } else if mount_local.contains(&DockEnvironmentMountLocalConfig::Group) {
         return Err(PrepareRunMountLocalArgsError::GroupMountedWithoutUser);
@@ -773,7 +779,7 @@ fn prepare_run_mount_local_args(
     if mount_local.contains(&DockEnvironmentMountLocalConfig::ProjectDir) {
         // TODO Add `cur_hostpaths` to the error context. See the comment
         // above `NoPathRouteOnHost` for more details.
-        let proj_dir_host_path = apply_hostpath(&cur_hostpaths, &dock_dir)
+        let proj_dir_host_path = apply_hostpath(cur_hostpaths, dock_dir)
             .context(NoProjectPathRouteOnHost{attempted_path: dock_dir})?;
 
         let proj_dir_cli_arg = abs_path_display(&proj_dir_host_path)
@@ -879,18 +885,18 @@ fn prepare_run_mount_args(
     let mut hostpath_cli_args = vec![];
     for (rel_outer_path, inner_path) in mounts {
         let mut path = dock_dir.to_owned();
-        abs_path_extend(&mut path, rel_outer_path.to_vec());
+        abs_path_extend(&mut path, rel_outer_path.clone());
 
         // TODO Add `cur_hostpaths` to the error context. This ideally requires
         // `&Trie` to implement `Clone` so that a new, owned copy of
         // `cur_hostpaths` can be added to the error.
-        path = apply_hostpath(&cur_hostpaths, &path)
+        path = apply_hostpath(cur_hostpaths, &path)
             .context(NoPathRouteOnHost{attempted_path: path})?;
 
         let host_path_cli_arg = abs_path_display(&path)
             .context(RenderHostPathFailed{
                 path,
-                inner_path: inner_path.to_path_buf(),
+                inner_path: (*inner_path).clone(),
             })?;
 
         let inner_path_os_string = (*inner_path).clone().into_os_string();
@@ -1098,7 +1104,7 @@ fn apply_hostpath(maybe_hostpaths: &Option<Hostpaths>, path: AbsPathRef)
             return Some(path.to_vec());
         };
 
-    let (prefix, host_dir) = hostpaths.value_at_prefix(&path)?;
+    let (prefix, host_dir) = hostpaths.value_at_prefix(path)?;
 
     let rel_path: Vec<OsString> =
         path
@@ -1118,7 +1124,7 @@ type AbsPath = Vec<OsString>;
 /// Returns the `AbsPath` parsed from `p`. `p` must begin with a "root
 /// directory" component.
 fn parse_abs_path(p: &str) -> Result<AbsPath, NewAbsPathError> {
-    abs_path_from_path_buf(&Path::new(p).to_path_buf())
+    abs_path_from_path_buf(Path::new(p))
 }
 
 #[derive(Debug, Snafu)]
@@ -1139,7 +1145,7 @@ enum NewAbsPathError {
     SpecialComponentInAbsPath,
 }
 
-fn abs_path_from_path_buf(p: &PathBuf) -> Result<AbsPath, NewAbsPathError> {
+fn abs_path_from_path_buf(p: &Path) -> Result<AbsPath, NewAbsPathError> {
     let mut components = p.components();
 
     let component = components.next()
@@ -1196,7 +1202,7 @@ fn abs_path_display_lossy(abs_path: AbsPathRef) -> String {
 }
 
 fn abs_path_extend(abs_path: &mut AbsPath, rel_path: RelPath) {
-    abs_path.extend(rel_path)
+    abs_path.extend(rel_path);
 }
 
 type AbsPathRef<'a> = &'a [OsString];
@@ -1205,7 +1211,7 @@ type RelPath = Vec<OsString>;
 
 /// Returns the `RelPath` derived from `p`. `p` must begin with a "current
 /// directory" component (i.e. `.`).
-fn rel_path_from_path_buf(p: &PathBuf) -> Result<RelPath, NewRelPathError> {
+fn rel_path_from_path_buf(p: &Path) -> Result<RelPath, NewRelPathError> {
     let mut components = p.components();
 
     let component = components.next()

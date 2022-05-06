@@ -96,7 +96,7 @@ fn assert_docker_build(cmd_result: AssertOutput, tagged_name: &str)
 pub fn new_str_from_cmd_stdout(cmd_result: &AssertOutput) -> &str {
     let stdout_bytes = &cmd_result.get_output().stdout;
 
-    str::from_utf8(&stdout_bytes)
+    str::from_utf8(stdout_bytes)
         .expect("couldn't decode STDOUT")
 }
 

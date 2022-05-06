@@ -76,7 +76,7 @@ pub fn render_dock_file(schema_vsn: &str, env_name: &str, env_defn: &str)
 }
 
 pub fn assert_apply(defn: &Definition) -> References {
-    assert_apply_with_dockerfile_name("Dockerfile", &defn)
+    assert_apply_with_dockerfile_name("Dockerfile", defn)
 }
 
 pub fn assert_apply_with_dockerfile_name(
