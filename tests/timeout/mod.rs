@@ -19,40 +19,26 @@ use crate::nix::sys::select::FdSet;
 use crate::nix::sys::time::TimeVal;
 use crate::nix::sys::time::TimeValLike;
 use crate::nix::unistd;
-
 use crate::snafu::ResultExt;
 use crate::snafu::Snafu;
 
 /// `FdReadWriter` is a readable and writeable interface to a file descriptor
 /// where a timeout parameter can be provided for these operations.
-struct FdReadWriter {
+pub struct FdReadWriter {
     // `fds` only contains the single file descriptor for this object.
     fds: FdSet,
+
+    // `file` is a readable and writable interface to the file descriptor for
+    // this object.
+    //
+    // NOTE `file` "owns" the file descriptor for this object, but `fds` still
+    // contains a reference to it. See the comment in `from_raw_fd` for more
+    // details on this.
     file: File,
 }
 
 impl FdReadWriter {
-    fn new(fd: RawFd) -> Self {
-        let mut fds = FdSet::new();
-        fds.insert(fd);
-
-        // NOTE According to the documentation for the `FromRawFd` trait:
-        //
-        // > This function consumes ownership of the specified file descriptor.
-        // > The returned object will take responsibility for closing it when
-        // > the object goes out of scope.
-        //
-        // Note that we retain access to the underlying `fd` through the `fds`
-        // field, which we use with `select` to determine when `fd` is ready
-        // for reading/writing. This violates the ownership contract described
-        // above and so may result in unexpected behaviour if not used
-        // carefully.
-        let file = unsafe { File::from_raw_fd(fd) };
-
-        Self{fds, file}
-    }
-
-    fn read(&mut self, buf: &mut [u8], timeout: Option<TimeVal>)
+    pub fn read(&mut self, buf: &mut [u8], timeout: Option<TimeVal>)
         -> Result<Option<usize>, Error>
     {
         let mut read_fds = self.fds;
@@ -83,6 +69,51 @@ impl FdReadWriter {
 
         Ok(Some(num_bytes))
     }
+
+    pub fn write(&mut self, buf: &[u8], timeout: Option<TimeVal>)
+        -> Result<Option<usize>, Error>
+    {
+        // NOTE All of the comments defined in `read()` also apply to this
+        // method.
+
+        let mut write_fds = self.fds;
+        let mut t = timeout;
+
+        let num_fds = select::select(None, None, &mut write_fds, None, &mut t)
+            .context(SelectFailed)?;
+
+        if num_fds == 0 {
+            return Ok(None);
+        }
+
+        let num_bytes = self.file.write(buf)
+            .context(OperationFailed)?;
+
+        Ok(Some(num_bytes))
+    }
+}
+
+impl FromRawFd for FdReadWriter {
+    unsafe fn from_raw_fd(fd: RawFd) -> Self {
+        let mut fds = FdSet::new();
+        fds.insert(fd);
+
+        // NOTE According to the documentation for the `FromRawFd` trait:
+        //
+        // > This function consumes ownership of the specified file descriptor.
+        // > The returned object will take responsibility for closing it when
+        // > the object goes out of scope.
+        //
+        // Note that we retain access to the underlying `fd` through the `fds`
+        // field, which we use with `select` to determine when `fd` is ready
+        // for reading/writing. This violates the ownership contract described
+        // above and so may result in unexpected behaviour if not used
+        // carefully.
+        let file = File::from_raw_fd(fd);
+
+        Self{fds, file}
+    }
+
 }
 
 #[derive(Debug, Snafu)]
@@ -119,7 +150,7 @@ mod tests {
         let f = File::open(test_file_path)
             .expect("couldn't open test file for reading");
         // (3)
-        let mut stream = FdReadWriter::new(f.as_raw_fd());
+        let mut stream = unsafe {FdReadWriter::from_raw_fd(f.as_raw_fd())};
         // (4)
         let mut buf = [0; 0x100];
 
@@ -173,7 +204,7 @@ mod tests {
         let f = File::open(test_file_path)
             .expect("couldn't open test file for reading");
         // (3)
-        let mut stream = FdReadWriter::new(f.as_raw_fd());
+        let mut stream = unsafe {FdReadWriter::from_raw_fd(f.as_raw_fd())};
         // (4)
         let mut buf = [0; 1];
         // (5)
@@ -206,7 +237,7 @@ mod tests {
         let f = File::open(test_file_path)
             .expect("couldn't open test file for reading");
         // (3)
-        let mut stream = FdReadWriter::new(f.as_raw_fd());
+        let mut stream = unsafe {FdReadWriter::from_raw_fd(f.as_raw_fd())};
         let mut buf = [0; 0x100];
         // (4)
         let result = stream.read(&mut buf, None);
@@ -230,7 +261,7 @@ mod tests {
             .expect("couldn't create pipe");
         unistd::close(tgt)
             .expect("couldn't close target end of pipe");
-        let mut stream = FdReadWriter::new(src);
+        let mut stream = unsafe {FdReadWriter::from_raw_fd(src)};
 
         let result = stream.read(&mut [0; 0x100], None);
 
@@ -254,7 +285,7 @@ mod tests {
         let (src, tgt) = unistd::pipe()
             .expect("couldn't create pipe");
         // (4)
-        let mut stream = FdReadWriter::new(src);
+        let mut stream = unsafe {FdReadWriter::from_raw_fd(src)};
         // (5)
         let timeout = TimeVal::seconds(3);
 
@@ -280,7 +311,7 @@ mod tests {
         let f = File::open(test_file_path)
             .expect("couldn't open test file for reading");
         // (2)
-        let mut stream = FdReadWriter::new(f.as_raw_fd());
+        let mut stream = unsafe {FdReadWriter::from_raw_fd(f.as_raw_fd())};
 
         let result = stream.read(&mut [0; 0], None);
 
@@ -303,7 +334,7 @@ mod tests {
         unistd::close(src)
             .expect("couldn't close source end of pipe");
         // (3)
-        let mut stream = FdReadWriter::new(src);
+        let mut stream = unsafe {FdReadWriter::from_raw_fd(src)};
 
         let r = stream.read(&mut [0; 0x100], None);
 
@@ -326,7 +357,7 @@ mod tests {
         let f = File::open(test_file_path)
             .expect("couldn't open test file for reading");
         // (1) (2)
-        let mut stream = FdReadWriter::new(f.as_raw_fd());
+        let mut stream = unsafe {FdReadWriter::from_raw_fd(f.as_raw_fd())};
         // (3)
         let timeout = TimeVal::seconds(-1);
 

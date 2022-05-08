@@ -17,5 +17,6 @@ mod assert_run;
 mod cli;
 mod docker;
 mod line_matcher;
+mod pty_expecter;
 mod test_setup;
 mod timeout;
