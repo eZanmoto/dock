@@ -2,19 +2,16 @@
 // Use of this source code is governed by an MIT
 // licence that can be found in the LICENCE file.
 
-use std::os::unix::io::FromRawFd;
-use std::process::Command;
-use std::process::Stdio;
 use std::str;
 use std::string::ToString;
 
-use crate::nix::pty;
-use crate::nix::pty::OpenptyResult;
 use crate::nix::sys::time::TimeVal;
 use crate::nix::sys::time::TimeValLike;
 
+mod pty;
+
 use crate::timeout::Error as TimeoutError;
-use crate::timeout::FdReadWriter;
+use self::pty::Pty;
 
 #[test]
 // TODO Refactor this test into BDD-comment tests.
@@ -49,7 +46,7 @@ fn sequence() {
 }
 
 struct PtyExpecter {
-    stream: FdReadWriter,
+    pty: Pty,
     timeout: TimeVal,
     buf: Vec<u8>,
     buf_used: usize,
@@ -60,52 +57,30 @@ impl PtyExpecter {
     unsafe fn with_new<F, T, E>(
         timeout: TimeVal,
         prog: &str,
-        args: &[&str], f: F,
+        args: &[&str],
+        f: F,
     )
         -> Result<T, E>
     where
         F: FnOnce(Self) -> Result<T, E>
     {
-        let OpenptyResult{master: controller_fd, slave: follower_fd} =
-            pty::openpty(None, None)
-                .expect("couldn't open a new PTY");
+        Pty::with_new(
+            prog,
+            args,
+            |pty| {
+                let expecter = Self{
+                    pty,
+                    timeout,
+                    // TODO Consider taking the capacity as a parameter
+                    // instead.
+                    buf: Vec::with_capacity(BUF_MIN_SPACE),
+                    buf_used: 0,
+                    last_match: 0,
+                };
 
-        let new_follower_stdio = || Stdio::from_raw_fd(follower_fd);
-
-        let mut child =
-            Command::new(prog)
-                .args(args)
-                .stdin(new_follower_stdio())
-                .stdout(new_follower_stdio())
-                .stderr(new_follower_stdio())
-                .spawn()
-                .expect("couldn't spawn the new PTY process");
-
-        let expecter = Self{
-            stream: FdReadWriter::from_raw_fd(controller_fd),
-            timeout,
-            // TODO Consider taking the capacity as a parameter instead.
-            buf: Vec::with_capacity(BUF_MIN_SPACE),
-            buf_used: 0,
-            last_match: 0,
-        };
-
-        let result = f(expecter);
-
-        child.kill()
-            .expect("couldn't kill the PTY process");
-
-        child.wait()
-            .expect("couldn't wait for the PTY process");
-
-        // NOTE We don't close the file descriptors for the PTY opened at the
-        // start of the function because their ownership is consumed by
-        // different objects that automatically close the descriptors when the
-        // objects go out of scope. See the contract of `from_raw_fd()` in
-        // <https://doc.rust-lang.org/std/os/unix/io/trait.FromRawFd.html> for
-        // more information.
-
-        result
+                f(expecter)
+            },
+        )
     }
 
     fn send(&mut self, substr: &str) {
@@ -115,9 +90,9 @@ impl PtyExpecter {
         while cursor < seq.len() {
             let subseq = &seq[cursor..];
 
-            let n = self.stream.write(subseq, Some(self.timeout))
+            let n = self.pty.write(subseq, Some(self.timeout))
                 .unwrap_or_else(|_| self.fail(&format!(
-                    "couldn't write to stream; sending '{}'",
+                    "couldn't write to PTY; sending '{}'",
                     substr,
                 )))
                 .unwrap_or_else(|| self.fail(&format!(
@@ -125,7 +100,7 @@ impl PtyExpecter {
                     substr,
                 )));
 
-            assert!(n != 0, "stream didn't accept any bytes");
+            assert!(n != 0, "PTY didn't accept any bytes");
 
             cursor += n;
         }
@@ -143,9 +118,11 @@ impl PtyExpecter {
                 break;
             }
 
-            let n = self.read_next(self.buf_used)
+            self.resize_buf_if_needed();
+
+            let n = self.read_to_buf_from(self.buf_used)
                 .unwrap_or_else(|_| self.fail(&format!(
-                    "couldn't read from stream; expecting '{}'",
+                    "couldn't read from PTY; expecting '{}'",
                     substr,
                 )))
                 .unwrap_or_else(|| self.fail(&format!(
@@ -157,6 +134,12 @@ impl PtyExpecter {
 
             self.buf_used += n;
         }
+    }
+
+    fn read_to_buf_from(&mut self, cursor: usize)
+        -> Result<Option<usize>, TimeoutError>
+    {
+        self.pty.read(&mut self.buf[cursor..], Some(self.timeout))
     }
 
     fn fail(&self, msg: &str) -> ! {
@@ -196,36 +179,6 @@ impl PtyExpecter {
         target
     }
 
-    fn read_next(&mut self, cursor: usize)
-        -> Result<Option<usize>, TimeoutError>
-    {
-        self.resize_buf_if_needed();
-
-        let buf_scratch = &mut self.buf[cursor..];
-
-        let result = self.stream.read(buf_scratch, Some(self.timeout));
-
-        // If we encounter an error code 5, which corresponds to "Input/output
-        // error" in Rust, we regard that as an EOF signal and convert it to
-        // match the Rust convention for `read`. This information is supported
-        // by a number of non-authoritative sources, but a good summary is
-        // provided by <https://unix.stackexchange.com/a/538271>:
-        //
-        // > On Linux, a `read()` on the master side of a pseudo-tty will
-        // > return `-1` and set `ERRNO` to `EIO` when all the handles to its
-        // > slave side have been closed, but will either block or return
-        // > `EAGAIN` before the slave has been first opened.
-        //
-        // It is presumed that `EIO` corresponds to "Input/output error".
-        if let Err(TimeoutError::OperationFailed{ref source}) = result {
-            if source.raw_os_error() == Some(5) {
-                return Ok(Some(0));
-            }
-        }
-
-        result
-    }
-
     fn matches(&self, seq: &[u8]) -> Option<usize> {
         let unmatched = &self.buf[self.last_match..];
 
@@ -246,7 +199,7 @@ impl PtyExpecter {
 
     fn expect_eof(&mut self) {
         loop {
-            let n = self.read_next(0)
+            let n = self.read_to_buf_from(0)
                 .unwrap_or_else(|_| self.fail(
                     "couldn't read from stream; expecting EOF",
                 ))
