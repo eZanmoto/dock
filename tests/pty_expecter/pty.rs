@@ -3,6 +3,7 @@
 // licence that can be found in the LICENCE file.
 
 use std::os::unix::io::FromRawFd;
+use std::process::Child;
 use std::process::Command;
 use std::process::Stdio;
 use std::str;
@@ -16,21 +17,18 @@ use crate::timeout::FdReadWriter;
 
 pub struct Pty {
     stream: FdReadWriter,
+    child: Child,
 }
 
 impl Pty {
-    pub unsafe fn with_new<F, T, E>(prog: &str, args: &[&str], f: F)
-        -> Result<T, E>
-    where
-        F: FnOnce(Self) -> Result<T, E>
-    {
+    pub unsafe fn new(prog: &str, args: &[&str]) -> Self {
         let OpenptyResult{master: controller_fd, slave: follower_fd} =
             pty::openpty(None, None)
                 .expect("couldn't open a new PTY");
 
         let new_follower_stdio = || Stdio::from_raw_fd(follower_fd);
 
-        let mut child =
+        let child =
             Command::new(prog)
                 .args(args)
                 .stdin(new_follower_stdio())
@@ -39,26 +37,10 @@ impl Pty {
                 .spawn()
                 .expect("couldn't spawn the new PTY process");
 
-        let pty = Self{
+        Self{
             stream: FdReadWriter::from_raw_fd(controller_fd),
-        };
-
-        let result = f(pty);
-
-        child.kill()
-            .expect("couldn't kill the PTY process");
-
-        child.wait()
-            .expect("couldn't wait for the PTY process");
-
-        // NOTE We don't close the file descriptors for the PTY opened at the
-        // start of the function because their ownership is consumed by
-        // different objects that automatically close the descriptors when the
-        // objects go out of scope. See the contract of `from_raw_fd()` in
-        // <https://doc.rust-lang.org/std/os/unix/io/trait.FromRawFd.html> for
-        // more information.
-
-        result
+            child,
+        }
     }
 
     pub fn read(&mut self, buf: &mut [u8], timeout: Option<TimeVal>)
@@ -91,5 +73,30 @@ impl Pty {
         -> Result<Option<usize>, TimeoutError>
     {
         self.stream.write(buf, timeout)
+    }
+}
+
+impl Drop for Pty {
+    fn drop(&mut self) {
+        // NOTE Proper handling of the process cleanup has been skipped here so
+        // failing to clean up the process results in panics, instead of
+        // returning errors that the developer can handle. This can also lead
+        // to leaked processes. This should be sufficient for testing purposes,
+        // but if this `struct` is to be used for more robust scenarios then it
+        // should be refactored to a "function closure" style that can return
+        // the error, in the style of `Pty::with_new`.
+
+        // NOTE We don't close the file descriptors for the PTY opened during
+        // construction because their ownership is consumed by different
+        // objects that automatically close the descriptors when the objects go
+        // out of scope. See the contract of `from_raw_fd()` in
+        // <https://doc.rust-lang.org/std/os/unix/io/trait.FromRawFd.html> for
+        // more information.
+
+        self.child.kill()
+            .expect("couldn't kill the PTY process");
+
+        self.child.wait()
+            .expect("couldn't wait for the PTY process");
     }
 }

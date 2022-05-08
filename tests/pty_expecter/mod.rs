@@ -16,33 +16,23 @@ use self::pty::Pty;
 #[test]
 // TODO Refactor this test into BDD-comment tests.
 fn sequence() {
-    unsafe {
-        PtyExpecter::with_new(
-            TimeVal::seconds(3),
-            "/bin/sh",
-            &[],
-            |mut pty| -> Result<(), ()> {
-                pty.expect("$ ");
+    let timeout = TimeVal::seconds(3);
+    let mut pty = unsafe { PtyExpecter::new("/bin/sh", &[], timeout) };
 
-                // We add quote marks around `hi` so that `expect("hi\r")`
-                // doesn't match the characters that the terminal itself
-                // echoes. TODO Consider disabling terminal echo in order to
-                // simplify expectations.
-                pty.send("echo 'hi'\n");
+    pty.expect("$ ");
 
-                pty.expect("hi\r");
+    // We add quote marks around `hi` so that `expect("hi\r")` doesn't match
+    // the characters that the terminal itself echoes. TODO Consider disabling
+    // terminal echo in order to simplify expectations.
+    pty.send("echo 'hi'\n");
 
-                pty.expect("$ ");
+    pty.expect("hi\r");
 
-                pty.send("exit\n");
+    pty.expect("$ ");
 
-                pty.expect_eof();
+    pty.send("exit\n");
 
-                Ok(())
-            },
-        )
-            .expect("PTY expectation failed");
-    }
+    pty.expect_eof();
 }
 
 struct PtyExpecter {
@@ -54,33 +44,15 @@ struct PtyExpecter {
 }
 
 impl PtyExpecter {
-    unsafe fn with_new<F, T, E>(
-        timeout: TimeVal,
-        prog: &str,
-        args: &[&str],
-        f: F,
-    )
-        -> Result<T, E>
-    where
-        F: FnOnce(Self) -> Result<T, E>
-    {
-        Pty::with_new(
-            prog,
-            args,
-            |pty| {
-                let expecter = Self{
-                    pty,
-                    timeout,
-                    // TODO Consider taking the capacity as a parameter
-                    // instead.
-                    buf: Vec::with_capacity(BUF_MIN_SPACE),
-                    buf_used: 0,
-                    last_match: 0,
-                };
-
-                f(expecter)
-            },
-        )
+    unsafe fn new(prog: &str, args: &[&str], timeout: TimeVal) -> Self {
+        Self{
+            pty: Pty::new(prog, args),
+            timeout,
+            // TODO Consider taking the capacity as a parameter instead.
+            buf: Vec::with_capacity(BUF_MIN_SPACE),
+            buf_used: 0,
+            last_match: 0,
+        }
     }
 
     fn send(&mut self, substr: &str) {
