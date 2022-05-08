@@ -2,6 +2,8 @@
 // Use of this source code is governed by an MIT
 // licence that can be found in the LICENCE file.
 
+mod expecter;
+
 use std::os::unix::io::FromRawFd;
 use std::process::Child;
 use std::process::Command;

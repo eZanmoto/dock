@@ -8,16 +8,14 @@ use std::string::ToString;
 use crate::nix::sys::time::TimeVal;
 use crate::nix::sys::time::TimeValLike;
 
-mod pty;
-
 use crate::timeout::Error as TimeoutError;
-use self::pty::Pty;
+use super::Pty;
 
 #[test]
 // TODO Refactor this test into BDD-comment tests.
 fn sequence() {
     let timeout = TimeVal::seconds(3);
-    let mut pty = unsafe { PtyExpecter::new("/bin/sh", &[], timeout) };
+    let mut pty = unsafe { Expecter::new("/bin/sh", &[], timeout) };
 
     pty.expect("$ ");
 
@@ -35,7 +33,7 @@ fn sequence() {
     pty.expect_eof();
 }
 
-struct PtyExpecter {
+struct Expecter {
     pty: Pty,
     timeout: TimeVal,
     buf: Vec<u8>,
@@ -43,7 +41,7 @@ struct PtyExpecter {
     last_match: usize,
 }
 
-impl PtyExpecter {
+impl Expecter {
     unsafe fn new(prog: &str, args: &[&str], timeout: TimeVal) -> Self {
         Self{
             pty: Pty::new(prog, args),
