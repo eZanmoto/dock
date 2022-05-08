@@ -3,11 +3,11 @@
 // licence that can be found in the LICENCE file.
 
 use std::env;
-use std::io::Read;
-use std::io::Error as IoError;
-use std::io::Write;
 use std::fs::File;
 use std::fs::OpenOptions;
+use std::io::Error as IoError;
+use std::io::Read;
+use std::io::Write;
 use std::os::unix::io::AsRawFd;
 use std::os::unix::io::FromRawFd;
 use std::os::unix::io::RawFd;
