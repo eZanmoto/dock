@@ -11,6 +11,8 @@ extern crate indoc;
 extern crate maplit;
 extern crate nix;
 extern crate predicates;
+#[macro_use]
+extern crate scopeguard;
 extern crate snafu;
 
 mod assert_run;

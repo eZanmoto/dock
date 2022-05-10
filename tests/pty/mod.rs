@@ -2,7 +2,7 @@
 // Use of this source code is governed by an MIT
 // licence that can be found in the LICENCE file.
 
-mod expecter;
+pub mod expecter;
 
 use std::os::unix::io::FromRawFd;
 use std::process::Child;
@@ -23,7 +23,7 @@ pub struct Pty {
 }
 
 impl Pty {
-    pub unsafe fn new(prog: &str, args: &[&str]) -> Self {
+    pub unsafe fn new(prog: &str, args: &[&str], current_dir: &str) -> Self {
         let OpenptyResult{master: controller_fd, slave: follower_fd} =
             pty::openpty(None, None)
                 .expect("couldn't open a new PTY");
@@ -36,6 +36,7 @@ impl Pty {
                 .stdin(new_follower_stdio())
                 .stdout(new_follower_stdio())
                 .stderr(new_follower_stdio())
+                .current_dir(current_dir)
                 .spawn()
                 .expect("couldn't spawn the new PTY process");
 

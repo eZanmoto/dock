@@ -15,7 +15,7 @@ use super::Pty;
 // TODO Refactor this test into BDD-comment tests.
 fn sequence() {
     let timeout = TimeVal::seconds(3);
-    let mut pty = unsafe { Expecter::new("/bin/sh", &[], timeout) };
+    let mut pty = unsafe { Expecter::new("/bin/sh", &[], timeout, "/") };
 
     pty.expect("$ ");
 
@@ -33,7 +33,7 @@ fn sequence() {
     pty.expect_eof();
 }
 
-struct Expecter {
+pub struct Expecter {
     pty: Pty,
     timeout: TimeVal,
     buf: Vec<u8>,
@@ -42,9 +42,14 @@ struct Expecter {
 }
 
 impl Expecter {
-    unsafe fn new(prog: &str, args: &[&str], timeout: TimeVal) -> Self {
+    pub unsafe fn new(
+        prog: &str,
+        args: &[&str],
+        timeout: TimeVal,
+        current_dir: &str,
+    ) -> Self {
         Self{
-            pty: Pty::new(prog, args),
+            pty: Pty::new(prog, args, current_dir),
             timeout,
             // TODO Consider taking the capacity as a parameter instead.
             buf: Vec::with_capacity(BUF_MIN_SPACE),
@@ -53,7 +58,7 @@ impl Expecter {
         }
     }
 
-    fn send(&mut self, substr: &str) {
+    pub fn send(&mut self, substr: &str) {
         let seq = substr.as_bytes();
         let mut cursor = 0;
 
@@ -70,13 +75,18 @@ impl Expecter {
                     substr,
                 )));
 
-            assert!(n != 0, "PTY didn't accept any bytes");
+            if n == 0 {
+                self.fail(&format!(
+                    "PTY didn't accept bytes; sending '{}'",
+                    substr,
+                ));
+            }
 
             cursor += n;
         }
     }
 
-    fn expect(&mut self, substr: &str) {
+    pub fn expect(&mut self, substr: &str) {
         let seq = substr.as_bytes();
 
         loop {
@@ -100,7 +110,9 @@ impl Expecter {
                     substr,
                 )));
 
-            assert!(n != 0, "unexpected EOF");
+            if n == 0 {
+                self.fail(&format!("unexpected EOF; expecting '{}'", substr));
+            }
 
             self.buf_used += n;
         }
@@ -167,7 +179,7 @@ impl Expecter {
         }
     }
 
-    fn expect_eof(&mut self) {
+    pub fn expect_eof(&mut self) {
         loop {
             let n = self.read_to_buf_from(0)
                 .unwrap_or_else(|_| self.fail(
