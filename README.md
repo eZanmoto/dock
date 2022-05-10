@@ -178,6 +178,13 @@ using `sudo`, `su`, scripts with sticky bits, or possibly using BuildKit, but
 `cache_mounts` can be used as a general, image-independent mechanism to handle
 this scenario.
 
+### `dock shell`
+
+`dock shell` has the same behaviour as `dock run`, but instead of running a
+single command, spawns a new shell in the Docker "environment". If a `dock.yaml`
+file contains an environment called `build`, then `dock shell build` will start
+a new shell in that environment.
+
 Development
 -----------
 
