@@ -37,6 +37,7 @@ use clap::Arg;
 use clap::ArgMatches;
 use clap::SubCommand;
 use serde::Deserialize;
+use serde_yaml::Error as SerdeYamlError;
 use serde_yaml::Value;
 use snafu::ResultExt;
 use snafu::OptionExt;
@@ -64,6 +65,10 @@ fn main() {
     let dock_file_name = "dock.yaml";
     let run_about: &str = &format!(
         "Run a command in an environment defined in `{}`",
+        dock_file_name,
+    );
+    let shell_about: &str = &format!(
+        "Start a shell in an environment defined in `{}`",
         dock_file_name,
     );
 
@@ -103,6 +108,12 @@ fn main() {
                             .multiple(true)
                             .help("Arguments to pass to `docker build`"),
                     ]),
+                SubCommand::with_name("shell")
+                    .about(shell_about)
+                    .args(&[
+                        Arg::with_name(ENV_FLAG)
+                            .help("The environment to run"),
+                    ]),
             ])
             .get_matches();
 
@@ -122,6 +133,10 @@ fn main() {
         },
         ("run", Some(sub_args)) => {
             let exit_code = run(dock_file_name, sub_args);
+            process::exit(exit_code);
+        },
+        ("shell", Some(sub_args)) => {
+            let exit_code = shell(dock_file_name, sub_args);
             process::exit(exit_code);
         },
         (arg_name, sub_args) => {
@@ -221,6 +236,14 @@ enum DockEnvironmentMountLocalConfig {
 }
 
 fn run(dock_file_name: &str, args: &ArgMatches) -> i32 {
+    run_with_extra_prefix_args(dock_file_name, args, vec![])
+}
+
+fn run_with_extra_prefix_args(
+    dock_file_name: &str,
+    args: &ArgMatches,
+    extra_prefix_args: Vec<String>,
+) -> i32 {
     let cwd =
         match env::current_dir() {
             Ok(dir) => {
@@ -248,8 +271,8 @@ fn run(dock_file_name: &str, args: &ArgMatches) -> i32 {
             },
         };
 
-    let conf_value: Value =
-        match serde_yaml::from_reader(conf_reader) {
+    let conf =
+        match parse_dock_config(conf_reader) {
             Ok(v) => {
                 v
             },
@@ -258,36 +281,6 @@ fn run(dock_file_name: &str, args: &ArgMatches) -> i32 {
                 return 1;
             },
         };
-
-    if let Some(vsn) = conf_value.get("schema_version") {
-        if vsn != "0.1" {
-            eprintln!(
-                "Only `schema_version` 0.1 is currently supported for `{}`",
-                dock_file_name,
-            );
-            return 1;
-        }
-    } else {
-        eprintln!("`{}` is missing `schema_version`", dock_file_name);
-        return 1;
-    }
-
-    let conf: DockConfig =
-        match serde_yaml::from_value(conf_value) {
-            Ok(v) => {
-                v
-            },
-            Err(e) => {
-                eprintln!("couldn't convert `{}`: {}", dock_file_name, e);
-                return 1;
-            },
-        };
-
-    // `schema_version` isn't used after the configuration has been
-    // deserialised, but we assign it to an unused variable to prevent Clippy
-    // from alerting us about the unused field.
-    #[allow(clippy::no_effect_underscore_binding)]
-    let _vsn = conf.schema_version;
 
     let env_name = args.value_of(ENV_FLAG).unwrap();
 
@@ -337,7 +330,52 @@ fn run(dock_file_name: &str, args: &ArgMatches) -> i32 {
 
     let proj = Project{org: conf.organisation, name: conf.project};
 
-    handle_run_for_run(&dock_dir, args, &proj, env_name, env, target_img)
+    handle_run_for_run(
+        &dock_dir,
+        args,
+        &proj,
+        env_name,
+        env,
+        target_img,
+        extra_prefix_args,
+    )
+}
+
+fn parse_dock_config(file: File) -> Result<DockConfig, ParseDockConfigError> {
+    let conf_value: Value = serde_yaml::from_reader(file)
+        .context(ParseYamlFailed)?;
+
+    if let Some(vsn) = conf_value.get("schema_version") {
+        if vsn != "0.1" {
+            // TODO Add `vsn` to the error context.
+            return Err(ParseDockConfigError::UnsupportedSchemaVersion);
+        }
+    } else {
+        return Err(ParseDockConfigError::MissingSchemaVersion);
+    }
+
+    let conf: DockConfig = serde_yaml::from_value(conf_value)
+        .context(ParseSchemaFailed)?;
+
+    // `schema_version` isn't used after the configuration has been
+    // deserialised, but we assign it to an unused variable to prevent Clippy
+    // from alerting us about the unused field.
+    #[allow(clippy::no_effect_underscore_binding)]
+    let _vsn = &conf.schema_version;
+
+    Ok(conf)
+}
+
+#[derive(Debug, Snafu)]
+pub enum ParseDockConfigError {
+    #[snafu(display("Couldn't parse: {}", source))]
+    ParseYamlFailed{source: SerdeYamlError},
+    #[snafu(display("Only `schema_version` 0.1 is currently supported"))]
+    UnsupportedSchemaVersion,
+    #[snafu(display("Missing `schema_version` field"))]
+    MissingSchemaVersion,
+    #[snafu(display("Parsed YAML didn't conform to schema: {}", source))]
+    ParseSchemaFailed{source: SerdeYamlError},
 }
 
 #[derive(Debug)]
@@ -492,6 +530,7 @@ fn handle_run_for_run(
     env_name: &str,
     env: &DockEnvironmentConfig,
     target_img: String,
+    extra_prefix_args: Vec<String>,
 )
     -> i32
 {
@@ -521,6 +560,7 @@ fn handle_run_for_run(
         target_img,
         &extra_run_args,
         &dock_dir,
+        extra_prefix_args,
     );
 
     let run_args =
@@ -554,10 +594,13 @@ fn prepare_run_args(
     target_img: String,
     extra_args: &[&str],
     dock_dir: AbsPathRef,
+    extra_prefix_args: Vec<String>,
 )
     -> Result<Vec<String>, PrepareRunArgsError>
 {
     let mut run_args = to_strings(&["run", "--rm"]);
+
+    run_args.extend(extra_prefix_args);
 
     if let Some(cache_volumes) = &env.cache_volumes {
         let args = prepare_run_cache_volumes_args(
@@ -1253,4 +1296,16 @@ fn path_buf_extend(path_buf: &mut PathBuf, rel_path: RelPathRef) {
     for component in rel_path {
         path_buf.push(component);
     }
+}
+
+fn shell(dock_file_name: &str, args: &ArgMatches) -> i32 {
+    run_with_extra_prefix_args(
+        dock_file_name,
+        args,
+        to_strings(&[
+            "--interactive",
+            "--tty",
+            "--entrypoint=/bin/sh",
+        ]),
+    )
 }
