@@ -49,6 +49,8 @@ mod rebuild;
 mod trie;
 
 use docker::AssertRunError as DockerAssertRunError;
+use docker::StreamRunError;
+use fs::FindAndOpenFileError;
 use rebuild::RebuildError;
 use rebuild::RebuildWithCapturedOutputError;
 use trie::InsertError;
@@ -166,7 +168,7 @@ fn rebuild(target_img: &str, docker_args: Vec<&str>) -> i32 {
             exit_code_from_exit_status(exit_status)
         },
         Err(e) => {
-            eprintln!("{:?}", e);
+            eprintln!("{}", e);
 
             1
         },
@@ -236,62 +238,90 @@ enum DockEnvironmentMountLocalConfig {
 }
 
 fn run(dock_file_name: &str, args: &ArgMatches) -> i32 {
-    run_with_extra_prefix_args(dock_file_name, args, vec![])
+    handle_run_with_extra_prefix_args(dock_file_name, args, vec![])
 }
 
-fn run_with_extra_prefix_args(
+fn handle_run_with_extra_prefix_args(
     dock_file_name: &str,
     args: &ArgMatches,
     extra_prefix_args: Vec<String>,
 ) -> i32 {
-    let cwd =
-        match env::current_dir() {
-            Ok(dir) => {
-                dir
-            },
-            Err(err) => {
-                eprintln!("couldn't get the current directory: {}", err);
-                return 1;
-            },
-        };
-
-    let (dock_dir, conf_reader) =
-        match fs::find_and_open_file(&cwd, dock_file_name) {
-            Ok(maybe_v) => {
-                if let Some(v) = maybe_v {
-                    v
-                } else {
-                    eprintln!("`{}` not found in path", dock_file_name);
-                    return 1;
-                }
-            },
-            Err(e) => {
-                eprintln!("couldn't open `{}`: {}", dock_file_name, e);
-                return 1;
-            },
-        };
-
-    let conf =
-        match parse_dock_config(conf_reader) {
-            Ok(v) => {
-                v
-            },
-            Err(e) => {
-                eprintln!("couldn't parse `{}`: {}", dock_file_name, e);
-                return 1;
-            },
-        };
-
+    // TODO Make this variable required.
     let env_name = args.value_of(ENV_FLAG).unwrap();
 
-    let env =
-        if let Some(env) = conf.environments.get(env_name) {
-            env
-        } else {
-            eprintln!("environment '{}' isn't defined", env_name);
-
-            return 1;
+    let extra_run_args =
+        match args.values_of(DOCKER_ARGS_FLAG) {
+            Some(vs) => vs.collect(),
+            None => vec![],
         };
+
+    let result = run_with_extra_prefix_args(
+        dock_file_name,
+        env_name,
+        extra_prefix_args,
+        &extra_run_args,
+    );
+    match result {
+        Ok(exit_status) => {
+            exit_code_from_exit_status(exit_status)
+        },
+        Err(e) => {
+            match e {
+                RunWithExtraPrefixArgsError::RebuildForRunFailed{
+                    source: RebuildForRunError::RebuildFailed{
+                        stdout,
+                        stderr,
+                        ..
+                    },
+                } => {
+                    let result = io::stdout()
+                        .lock()
+                        .write_all(&stdout);
+                    if let Err(e) = result {
+                        eprintln!("couldn't write captured STDOUT: {}", e);
+                    }
+
+                    let result = io::stderr()
+                        .lock()
+                        .write_all(&stderr);
+                    if let Err(e) = result {
+                        eprintln!("couldn't write captured STDERR: {}", e);
+                    }
+                },
+                _ => {
+                    eprintln!("{}", e);
+                },
+            }
+
+            1
+        },
+    }
+}
+
+fn run_with_extra_prefix_args(
+    dock_file_name: &str,
+    env_name: &str,
+    extra_prefix_args: Vec<String>,
+    extra_run_args: &[&str],
+) -> Result<ExitStatus, RunWithExtraPrefixArgsError> {
+    let cwd = env::current_dir()
+        .context(GetCurrentDirFailed)?;
+
+    let (dock_dir, conf_reader) = fs::find_and_open_file(&cwd, dock_file_name)
+        .context(OpenDockFileFailed{
+            dock_file_name: dock_file_name.to_string(),
+        })?
+        .context(DockFileNotFound{
+            dock_file_name: dock_file_name.to_string(),
+        })?;
+
+    let conf = parse_dock_config(conf_reader)
+        .context(ParseDockConfigFailed{
+            dock_file_name: dock_file_name.to_string(),
+        })?;
+
+    let env = conf.environments.get(env_name)
+        .context(EnvironmentNotFound{env_name})?;
 
     let img_name = format!(
         "{}/{}.{}",
@@ -304,41 +334,65 @@ fn run_with_extra_prefix_args(
 
     let env_context =
         if let Some(path) = &env.context {
-            match rel_path_from_path_buf(path) {
-                Ok(p) => {
-                    Some(p)
-                },
-                Err(e) => {
-                    eprintln!("couldn't get context as relative path: {}", e);
+            let p = rel_path_from_path_buf(path)
+                .context(RelPathFromContextPathFailed)?;
 
-                    return 1;
-                },
-            }
+            Some(p)
         } else {
             None
         };
 
-    let ok = handle_rebuild_for_run(
+    rebuild_for_run(
         dock_dir.clone(),
         env_name,
         &env_context,
         &target_img,
-    );
-    if !ok {
-        return 1;
-    }
+    )
+        .context(RebuildForRunFailed)?;
 
     let proj = Project{org: conf.organisation, name: conf.project};
 
-    handle_run_for_run(
+    let exit_status = run_for_run(
         &dock_dir,
-        args,
         &proj,
         env_name,
         env,
         target_img,
         extra_prefix_args,
+        extra_run_args,
     )
+        .context(RunForRunFailed)?;
+
+    Ok(exit_status)
+}
+
+// TODO The following variants don't need to contain `dock_file_name` as a
+// field because it's passed to the `run_with_extra_prefix_args`, but we
+// include it for now for simplicity.
+#[derive(Debug, Snafu)]
+enum RunWithExtraPrefixArgsError {
+    #[snafu(display("Couldn't get the current directory: {}", source))]
+    GetCurrentDirFailed{source: IoError},
+    #[snafu(display("Couldn't find '{}'", dock_file_name))]
+    DockFileNotFound{dock_file_name: String},
+    #[snafu(display("Couldn't open '{}': {}", dock_file_name, source))]
+    OpenDockFileFailed{source: FindAndOpenFileError, dock_file_name: String},
+    #[snafu(display("Couldn't parse '{}': {}", dock_file_name, source))]
+    ParseDockConfigFailed{
+        source: ParseDockConfigError,
+        dock_file_name: String,
+    },
+    #[snafu(display("Dock environment '{}' isn't defined", env_name))]
+    EnvironmentNotFound{env_name: String},
+    #[snafu(display(
+        "Couldn't get path to the context directory as a relative path: {}",
+        source,
+    ))]
+    RelPathFromContextPathFailed{source: NewRelPathError},
+    #[snafu(display("{}", source))]
+    RebuildForRunFailed{source: RebuildForRunError},
+    #[snafu(display("{}", source))]
+    RunForRunFailed{source: RunForRunError},
 }
 
 fn parse_dock_config(file: File) -> Result<DockConfig, ParseDockConfigError> {
@@ -384,12 +438,14 @@ struct Project{
     name: String,
 }
 
-fn handle_rebuild_for_run(
+fn rebuild_for_run(
     dock_dir: PathBuf,
     env_name: &str,
     maybe_context_sub_path: &Option<RelPath>,
-    target_img: &str,
-) -> bool {
+    img: &str,
+)
+    -> Result<(), RebuildForRunError>
+{
     let mut dockerfile_path = dock_dir.clone();
     dockerfile_path.push(format!("{}.Dockerfile", env_name));
 
@@ -398,31 +454,48 @@ fn handle_rebuild_for_run(
         dockerfile_path.as_path(),
         maybe_context_sub_path,
     );
-    let docker_rebuild_input =
-        match docker_rebuild_input_result {
-            Ok(v) => {
-                v
-            },
-            Err(e) => {
-                eprintln!(
-                    "couldn't prepare parameters for docker rebuild: {}",
-                    e,
-                );
-                return false;
-            },
-        };
+    let docker_rebuild_input = docker_rebuild_input_result
+        .context(NewDockerRebuildInputFailed)?;
 
-    let rebuild_result = rebuild::rebuild_with_captured_output(
-        target_img,
+    let output = rebuild::rebuild_with_captured_output(
+        img,
         docker_rebuild_input.dockerfile,
         docker_rebuild_input
             .args
             .iter()
             .map(AsRef::as_ref)
             .collect(),
-    );
+    )
+        .context(RebuildWithCapturedOutputFailed{img: img.to_string()})?;
 
-    handle_run_rebuild_result(rebuild_result)
+    let Output{status, stdout, stderr} = output;
+
+    if !status.success() {
+        return Err(RebuildForRunError::RebuildFailed{
+            stdout,
+            stderr,
+            img: img.to_string(),
+        });
+    }
+
+    // We ignore the status code returned "by the build step" because there
+    // isn't anything to distinguish it from a status code returned "by the run
+    // step".
+    Ok(())
+}
+
+#[allow(clippy::enum_variant_names)]
+#[derive(Debug, Snafu)]
+enum RebuildForRunError {
+    #[snafu(display("Couldn't prepare input for `dock rebuild`: {}", source))]
+    NewDockerRebuildInputFailed{source: NewDockerRebuildInputError},
+    #[snafu(display("Couldn't rebuild '{}': {}", img, source))]
+    RebuildWithCapturedOutputFailed{
+        source: RebuildError<Output, RebuildWithCapturedOutputError>,
+        img: String,
+    },
+    #[snafu(display("Couldn't rebuild '{}'", img))]
+    RebuildFailed{img: String, stdout: Vec<u8>, stderr: Vec<u8>},
 }
 
 fn new_docker_rebuild_input(
@@ -487,104 +560,52 @@ pub enum NewDockerRebuildInputError {
     OpenDockerfileFailed{source: IoError, path: PathBuf},
 }
 
-// `handle_run_rebuild_result` returns `true` if `r` indicates a successful
-// rebuild, and returns `false` otherwise.
-fn handle_run_rebuild_result(
-    r: Result<Output, RebuildError<Output, RebuildWithCapturedOutputError>>,
-) -> bool {
-    match r {
-        Ok(Output{status, stdout, stderr}) => {
-            // We ignore the status code returned "by the build step" because
-            // there isn't anything to distinguish it from a status code
-            // returned "by the run step".
-            if status.success() {
-                return true;
-            }
-
-            let result = io::stdout()
-                .lock()
-                .write_all(&stdout);
-            if let Err(e) = result {
-                eprintln!("couldn't write captured STDOUT: {}", e);
-            }
-
-            let result = io::stderr()
-                .lock()
-                .write_all(&stderr);
-            if let Err(e) = result {
-                eprintln!("couldn't write captured STDERR: {}", e);
-            }
-        },
-        Err(v) => {
-            eprintln!("{}", v);
-        },
-    }
-
-    false
-}
-
-fn handle_run_for_run(
+fn run_for_run(
     dock_dir: &Path,
-    args: &ArgMatches,
     proj: &Project,
     env_name: &str,
     env: &DockEnvironmentConfig,
     target_img: String,
     extra_prefix_args: Vec<String>,
+    extra_run_args: &[&str],
 )
-    -> i32
+    -> Result<ExitStatus, RunForRunError>
 {
+    let dock_dir = abs_path_from_path_buf(dock_dir)
+        .context(AbsPathFromDockDirFailed)?;
 
-    let extra_run_args =
-        match args.values_of(DOCKER_ARGS_FLAG) {
-            Some(vs) => vs.collect(),
-            None => vec![],
-        };
-
-    let dock_dir =
-        match abs_path_from_path_buf(dock_dir) {
-            Ok(v) => {
-                v
-            },
-            Err(e) => {
-                eprintln!("{}", e);
-
-                return 1;
-            },
-        };
-
-    let run_args_result = prepare_run_args(
+    let run_args = prepare_run_args(
         proj,
         env_name,
         env,
         target_img,
-        &extra_run_args,
+        extra_run_args,
         &dock_dir,
         extra_prefix_args,
-    );
+    )
+        .context(PrepareRunArgsFailed)?;
 
-    let run_args =
-        match run_args_result {
-            Ok(v) => {
-                v
-            },
-            Err(e) => {
-                eprintln!("{}", e);
+    let exit_status = docker::stream_run(run_args)
+        .context(DockerRunFailed)?;
 
-                return 1;
-            },
-        };
+    Ok(exit_status)
+}
 
-    match docker::stream_run(run_args) {
-        Ok(exit_status) => {
-            exit_code_from_exit_status(exit_status)
-        },
-        Err(e) => {
-            eprintln!("{}", e);
-
-            1
-        },
-    }
+#[allow(clippy::enum_variant_names)]
+#[derive(Debug, Snafu)]
+enum RunForRunError {
+    #[snafu(display(
+        "Couldn't get path to current Dock directory as an absolute path: {}",
+        source,
+    ))]
+    AbsPathFromDockDirFailed{source: NewAbsPathError},
+    #[snafu(display(
+        "Couldn't prepare arguments for `docker run`: {}",
+        source,
+    ))]
+    PrepareRunArgsFailed{source: PrepareRunArgsError},
+    #[snafu(display("`docker run` failed: {}", source))]
+    DockerRunFailed{source: StreamRunError},
 }
 
 fn prepare_run_args(
@@ -1299,7 +1320,7 @@ fn path_buf_extend(path_buf: &mut PathBuf, rel_path: RelPathRef) {
 }
 
 fn shell(dock_file_name: &str, args: &ArgMatches) -> i32 {
-    run_with_extra_prefix_args(
+    handle_run_with_extra_prefix_args(
         dock_file_name,
         args,
         to_strings(&[
