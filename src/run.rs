@@ -77,21 +77,8 @@ pub fn run_with_extra_prefix_args(
     extra_prefix_args: Vec<String>,
     extra_run_args: &[&str],
 ) -> Result<ExitStatus, RunWithExtraPrefixArgsError> {
-    let cwd = env::current_dir()
-        .context(GetCurrentDirFailed)?;
-
-    let (dock_dir, conf_reader) = fs::find_and_open_file(&cwd, dock_file_name)
-        .context(OpenDockFileFailed{
-            dock_file_name: dock_file_name.to_string(),
-        })?
-        .context(DockFileNotFound{
-            dock_file_name: dock_file_name.to_string(),
-        })?;
-
-    let conf = parse_dock_config(conf_reader)
-        .context(ParseDockConfigFailed{
-            dock_file_name: dock_file_name.to_string(),
-        })?;
+    let (dock_dir, conf) = find_and_parse_dock_config(dock_file_name)
+        .context(FindAndParseDockConfigFailed{dock_file_name})?;
 
     let env = conf.environments.get(env_name)
         .context(EnvironmentNotFound{env_name})?;
@@ -144,15 +131,9 @@ pub fn run_with_extra_prefix_args(
 // include it for now for simplicity.
 #[derive(Debug, Snafu)]
 pub enum RunWithExtraPrefixArgsError {
-    #[snafu(display("Couldn't get the current directory: {}", source))]
-    GetCurrentDirFailed{source: IoError},
-    #[snafu(display("Couldn't find '{}'", dock_file_name))]
-    DockFileNotFound{dock_file_name: String},
-    #[snafu(display("Couldn't open '{}': {}", dock_file_name, source))]
-    OpenDockFileFailed{source: FindAndOpenFileError, dock_file_name: String},
-    #[snafu(display("Couldn't parse '{}': {}", dock_file_name, source))]
-    ParseDockConfigFailed{
-        source: ParseDockConfigError,
+    #[snafu(display("Couldn't find and parse '': {}", source))]
+    FindAndParseDockConfigFailed{
+        source: FindAndParseDockConfigError,
         dock_file_name: String,
     },
     #[snafu(display("Dock environment '{}' isn't defined", env_name))]
@@ -166,6 +147,34 @@ pub enum RunWithExtraPrefixArgsError {
     RebuildForRunFailed{source: RebuildForRunError},
     #[snafu(display("{}", source))]
     RunForRunFailed{source: RunForRunError},
+}
+
+fn find_and_parse_dock_config(dock_file_name: &str)
+    -> Result<(PathBuf, DockConfig), FindAndParseDockConfigError>
+{
+    let cwd = env::current_dir()
+        .context(GetCurrentDirFailed)?;
+
+    let (dock_dir, conf_reader) = fs::find_and_open_file(&cwd, dock_file_name)
+        .context(OpenDockFileFailed)?
+        .context(DockFileNotFound)?;
+
+    let conf = parse_dock_config(conf_reader)
+        .context(ParseDockConfigFailed)?;
+
+    Ok((dock_dir, conf))
+}
+
+#[derive(Debug, Snafu)]
+pub enum FindAndParseDockConfigError {
+    #[snafu(display("Couldn't get the current directory: {}", source))]
+    GetCurrentDirFailed{source: IoError},
+    #[snafu(display("Couldn't find Dock file"))]
+    DockFileNotFound,
+    #[snafu(display("Couldn't open: {}", source))]
+    OpenDockFileFailed{source: FindAndOpenFileError},
+    #[snafu(display("Couldn't parse: {}", source))]
+    ParseDockConfigFailed{source: ParseDockConfigError},
 }
 
 fn parse_dock_config(file: File) -> Result<DockConfig, ParseDockConfigError> {
