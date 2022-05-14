@@ -112,16 +112,22 @@ pub fn run_with_extra_prefix_args(
 
     let proj = Project{org: conf.organisation, name: conf.project};
 
-    let exit_status = run_for_run(
-        &dock_dir,
+    let dock_dir = abs_path_from_path_buf(&dock_dir)
+        .context(AbsPathFromDockDirFailed{dock_dir})?;
+
+    let run_args = prepare_run_args(
         &proj,
         env_name,
         env,
         target_img,
-        extra_prefix_args,
         extra_run_args,
+        &dock_dir,
+        extra_prefix_args,
     )
-        .context(RunForRunFailed)?;
+        .context(PrepareRunArgsFailed)?;
+
+    let exit_status = docker::stream_run(run_args)
+        .context(DockerRunFailed)?;
 
     Ok(exit_status)
 }
@@ -145,8 +151,20 @@ pub enum RunWithExtraPrefixArgsError {
     RelPathFromContextPathFailed{source: NewRelPathError},
     #[snafu(display("{}", source))]
     RebuildForRunFailed{source: RebuildForRunError},
-    #[snafu(display("{}", source))]
-    RunForRunFailed{source: RunForRunError},
+    #[snafu(display(
+        "Couldn't get path to current Dock directory ('{}') as an absolute \
+            path: {}",
+        dock_dir.display(),
+        source,
+    ))]
+    AbsPathFromDockDirFailed{source: NewAbsPathError, dock_dir: PathBuf},
+    #[snafu(display(
+        "Couldn't prepare arguments for `docker run`: {}",
+        source,
+    ))]
+    PrepareRunArgsFailed{source: PrepareRunArgsError},
+    #[snafu(display("`docker run` failed: {}", source))]
+    DockerRunFailed{source: StreamRunError},
 }
 
 fn find_and_parse_dock_config(dock_file_name: &str)
@@ -339,54 +357,6 @@ pub enum NewDockerRebuildInputError {
         source,
     ))]
     OpenDockerfileFailed{source: IoError, path: PathBuf},
-}
-
-fn run_for_run(
-    dock_dir: &Path,
-    proj: &Project,
-    env_name: &str,
-    env: &DockEnvironmentConfig,
-    target_img: String,
-    extra_prefix_args: Vec<String>,
-    extra_run_args: &[&str],
-)
-    -> Result<ExitStatus, RunForRunError>
-{
-    let dock_dir = abs_path_from_path_buf(dock_dir)
-        .context(AbsPathFromDockDirFailed)?;
-
-    let run_args = prepare_run_args(
-        proj,
-        env_name,
-        env,
-        target_img,
-        extra_run_args,
-        &dock_dir,
-        extra_prefix_args,
-    )
-        .context(PrepareRunArgsFailed)?;
-
-    let exit_status = docker::stream_run(run_args)
-        .context(DockerRunFailed)?;
-
-    Ok(exit_status)
-}
-
-#[allow(clippy::enum_variant_names)]
-#[derive(Debug, Snafu)]
-pub enum RunForRunError {
-    #[snafu(display(
-        "Couldn't get path to current Dock directory as an absolute path: {}",
-        source,
-    ))]
-    AbsPathFromDockDirFailed{source: NewAbsPathError},
-    #[snafu(display(
-        "Couldn't prepare arguments for `docker run`: {}",
-        source,
-    ))]
-    PrepareRunArgsFailed{source: PrepareRunArgsError},
-    #[snafu(display("`docker run` failed: {}", source))]
-    DockerRunFailed{source: StreamRunError},
 }
 
 fn prepare_run_args(
