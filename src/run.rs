@@ -181,13 +181,12 @@ fn parse_dock_config(file: File) -> Result<DockConfig, ParseDockConfigError> {
     let conf_value: Value = serde_yaml::from_reader(file)
         .context(ParseYamlFailed)?;
 
-    if let Some(vsn) = conf_value.get("schema_version") {
-        if vsn != "0.1" {
-            // TODO Add `vsn` to the error context.
-            return Err(ParseDockConfigError::UnsupportedSchemaVersion);
-        }
-    } else {
-        return Err(ParseDockConfigError::MissingSchemaVersion);
+    let vsn = conf_value.get("schema_version")
+        .context(MissingSchemaVersion)?;
+
+    if vsn != "0.1" {
+        // TODO Add `vsn` to the error context.
+        return Err(ParseDockConfigError::UnsupportedSchemaVersion);
     }
 
     let conf: DockConfig = serde_yaml::from_value(conf_value)
