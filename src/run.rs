@@ -103,7 +103,7 @@ pub fn run_with_extra_prefix_args(
         };
 
     rebuild_for_run(
-        dock_dir.clone(),
+        &dock_dir,
         env_name,
         &env_context,
         &target_img,
@@ -238,14 +238,14 @@ struct Project{
 }
 
 fn rebuild_for_run(
-    dock_dir: PathBuf,
+    dock_dir: &Path,
     env_name: &str,
     maybe_context_sub_path: &Option<RelPath>,
     img: &str,
 )
     -> Result<(), RebuildForRunError>
 {
-    let mut dockerfile_path = dock_dir.clone();
+    let mut dockerfile_path = dock_dir.to_path_buf();
     dockerfile_path.push(format!("{}.Dockerfile", env_name));
 
     let docker_rebuild_input_result = new_docker_rebuild_input(
@@ -298,14 +298,14 @@ pub enum RebuildForRunError {
 }
 
 fn new_docker_rebuild_input(
-    dock_dir: PathBuf,
+    dock_dir: &Path,
     dockerfile_path: &Path,
     maybe_context_sub_path: &Option<RelPath>,
 )
     -> Result<DockerRebuildInput, NewDockerRebuildInputError>
 {
     if let Some(context_sub_path) = maybe_context_sub_path {
-        let mut context_path = dock_dir;
+        let mut context_path = dock_dir.to_path_buf();
         path_buf_extend(&mut context_path, context_sub_path);
 
         let context_path_cli_arg = context_path.to_str()
