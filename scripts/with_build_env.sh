@@ -43,6 +43,7 @@ docker run \
         --interactive \
         --tty \
         --rm \
+        --init \
         --mount="type=bind,src=$docker_sock,dst=$docker_sock" \
         --group-add="$host_docker_group_id" \
         --mount="type=volume,src=$vol_name,dst=$vol_dir" \

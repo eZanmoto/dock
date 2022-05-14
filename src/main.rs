@@ -598,7 +598,11 @@ fn prepare_run_args(
 )
     -> Result<Vec<String>, PrepareRunArgsError>
 {
-    let mut run_args = to_strings(&["run", "--rm"]);
+    // TODO Consider whether to make `--init` configurable. It is enabled by
+    // default for now due to its broad applicability, but it may be changed to
+    // be disabled by default in a future version if it causes unexpected
+    // behaviour.
+    let mut run_args = to_strings(&["run", "--rm", "--init"]);
 
     run_args.extend(extra_prefix_args);
 
