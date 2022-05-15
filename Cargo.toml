@@ -11,11 +11,11 @@ license = "MIT"
 name = "dock"
 readme = "README.md"
 repository = "https://github.com/ezanmoto/dock"
-version = "0.23.0"
+version = "0.24.0"
 edition = "2021"
 
 [dependencies]
-clap = "=2.33.3"
+clap = "=3.1.18"
 serde = { version = "=1.0.133", features = ["derive"] }
 serde_yaml = "=0.8.1"
 snafu = "=0.6.9"

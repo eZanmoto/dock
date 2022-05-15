@@ -9,11 +9,9 @@ use std::process;
 use std::process::ExitStatus;
 use std::str;
 
-use clap::App;
-use clap::AppSettings;
 use clap::Arg;
 use clap::ArgMatches;
-use clap::SubCommand;
+use clap::Command;
 
 mod docker;
 mod fs;
@@ -45,52 +43,48 @@ fn main() {
     );
 
     let args =
-        App::new("dpnd")
+        Command::new("dpnd")
             .version(env!("CARGO_PKG_VERSION"))
             .author(env!("CARGO_PKG_AUTHORS"))
             .about(env!("CARGO_PKG_DESCRIPTION"))
-            .settings(&[
-                AppSettings::SubcommandRequiredElseHelp,
-                AppSettings::VersionlessSubcommands,
-            ])
             .subcommands(vec![
-                SubCommand::with_name("rebuild")
-                    .setting(AppSettings::TrailingVarArg)
+                Command::new("rebuild")
+                    .trailing_var_arg(true)
                     .about(rebuild_about)
                     .args(&[
-                        Arg::with_name(TAGGED_IMG_FLAG)
+                        Arg::new(TAGGED_IMG_FLAG)
                             .required(true)
                             .help("The tagged name for the new image")
                             .long_help(
                                 "The tagged name for the new image, in the \
                                  form `name:tag`.",
                             ),
-                        Arg::with_name(DOCKER_ARGS_FLAG)
-                            .multiple(true)
+                        Arg::new(DOCKER_ARGS_FLAG)
+                            .multiple_occurrences(true)
                             .help("Arguments to pass to `docker build`"),
                     ]),
-                SubCommand::with_name("run")
-                    .setting(AppSettings::TrailingVarArg)
+                Command::new("run")
+                    .trailing_var_arg(true)
                     .about(run_about)
                     .args(&[
-                        Arg::with_name(ENV_FLAG)
+                        Arg::new(ENV_FLAG)
                             .required(true)
                             .help("The environment to run"),
-                        Arg::with_name(DOCKER_ARGS_FLAG)
-                            .multiple(true)
+                        Arg::new(DOCKER_ARGS_FLAG)
+                            .multiple_occurrences(true)
                             .help("Arguments to pass to `docker build`"),
                     ]),
-                SubCommand::with_name("shell")
+                Command::new("shell")
                     .about(shell_about)
                     .args(&[
-                        Arg::with_name(ENV_FLAG)
+                        Arg::new(ENV_FLAG)
                             .help("The environment to run"),
                     ]),
             ])
             .get_matches();
 
     match args.subcommand() {
-        ("rebuild", Some(sub_args)) => {
+        Some(("rebuild", sub_args)) => {
             let docker_args =
                 match sub_args.values_of(DOCKER_ARGS_FLAG) {
                     Some(vs) => vs.collect(),
@@ -103,15 +97,15 @@ fn main() {
             );
             process::exit(exit_code);
         },
-        ("run", Some(sub_args)) => {
+        Some(("run", sub_args)) => {
             let exit_code = run(dock_file_name, sub_args);
             process::exit(exit_code);
         },
-        ("shell", Some(sub_args)) => {
+        Some(("shell", sub_args)) => {
             let exit_code = shell(dock_file_name, sub_args);
             process::exit(exit_code);
         },
-        (arg_name, sub_args) => {
+        Some((arg_name, sub_args)) => {
             // All subcommands defined in `args_defn` should be handled here,
             // so matching an unhandled command shouldn't happen.
             panic!(
@@ -119,6 +113,9 @@ fn main() {
                 arg_name,
                 sub_args,
             );
+        },
+        _ => {
+            // TODO Run default command.
         },
     }
 }
@@ -178,28 +175,24 @@ fn index_of_first_unsupported_flag(args: &[&str]) -> Option<usize> {
 }
 
 fn run(dock_file_name: &str, args: &ArgMatches) -> i32 {
-    handle_run(dock_file_name, args, &[])
-}
-
-fn handle_run(
-    dock_file_name: &str,
-    args: &ArgMatches,
-    extra_prefix_args: &[&str],
-) -> i32 {
-    let env_name = args.value_of(ENV_FLAG);
-
-    let extra_run_args =
+    let cmd_args =
         match args.values_of(DOCKER_ARGS_FLAG) {
             Some(vs) => vs.collect(),
             None => vec![],
         };
 
-    let result = run::run(
-        dock_file_name,
-        env_name,
-        extra_prefix_args,
-        &extra_run_args,
-    );
+    handle_run(dock_file_name, args, &[], &cmd_args)
+}
+
+fn handle_run(
+    dock_file_name: &str,
+    args: &ArgMatches,
+    flags: &[&str],
+    cmd_args: &[&str],
+) -> i32 {
+    let env_name = args.value_of(ENV_FLAG);
+
+    let result = run::run(dock_file_name, env_name, flags, cmd_args);
     match result {
         Ok(exit_status) => {
             exit_code_from_exit_status(exit_status)
@@ -246,5 +239,6 @@ fn shell(dock_file_name: &str, args: &ArgMatches) -> i32 {
             "--tty",
             "--entrypoint=/bin/sh",
         ],
+        &[],
     )
 }
