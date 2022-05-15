@@ -33,9 +33,7 @@ use crate::docker::StreamRunError;
 use crate::fs;
 use crate::fs::FindAndOpenFileError;
 use crate::option::OptionResultExt;
-use crate::canon_path;
 use crate::canon_path::AbsPath;
-use crate::canon_path::AbsPathRef;
 use crate::canon_path::NewAbsPathError;
 use crate::canon_path::NewRelPathError;
 use crate::canon_path::RelPath;
@@ -93,10 +91,10 @@ pub fn run(
     let env_context =
         env.context
             .as_ref()
-            .and_maybe_then(|path| canon_path::rel_path_from_path_buf(path))
+            .and_maybe_then(|path| RelPath::try_from(path.clone()))
             .context(RelPathFromContextPathFailed)?;
 
-    rebuild_for_run(dock_dir.clone(), env_name, &env_context, &target_img)
+    rebuild_for_run(&dock_dir, env_name, &env_context, &target_img)
         .context(RebuildForRunFailed)?;
 
     let vol_name_prefix =
@@ -171,8 +169,8 @@ fn find_and_parse_dock_config(dock_file_name: &str)
     let conf = parse_dock_config(conf_reader)
         .context(ParseDockConfigFailed)?;
 
-    let dock_dir = canon_path::abs_path_from_path_buf(&dock_dir)
-        .context(AbsPathFromDockDirFailed{dock_dir})?;
+    let dock_dir = AbsPath::try_from(dock_dir.clone())
+        .context(DockDirAsAbsPathFailed{dock_dir})?;
 
     Ok((dock_dir, conf))
 }
@@ -193,7 +191,7 @@ pub enum FindAndParseDockConfigError {
         dock_dir.display(),
         source,
     ))]
-    AbsPathFromDockDirFailed{source: NewAbsPathError, dock_dir: PathBuf},
+    DockDirAsAbsPathFailed{source: NewAbsPathError, dock_dir: PathBuf},
 }
 
 fn parse_dock_config(file: File) -> Result<DockConfig, ParseDockConfigError> {
@@ -233,15 +231,14 @@ pub enum ParseDockConfigError {
 }
 
 fn rebuild_for_run(
-    dock_dir: AbsPath,
+    dock_dir: &AbsPath,
     env_name: &str,
     maybe_context_sub_path: &Option<RelPath>,
     img: &str,
 )
     -> Result<(), RebuildForRunError>
 {
-    let mut dockerfile_path =
-        canon_path::abs_path_to_path_buf(dock_dir.clone());
+    let mut dockerfile_path = PathBuf::from(dock_dir.clone());
     dockerfile_path.push(format!("{}.Dockerfile", env_name));
 
     let docker_rebuild_input_result = new_docker_rebuild_input(
@@ -292,19 +289,16 @@ pub enum RebuildForRunError {
 }
 
 fn new_docker_rebuild_input(
-    dock_dir: AbsPath,
+    dock_dir: &AbsPath,
     dockerfile_path: &Path,
     maybe_context_sub_path: &Option<RelPath>,
 )
     -> Result<DockerRebuildInput, NewDockerRebuildInputError>
 {
     if let Some(context_sub_path) = maybe_context_sub_path {
-        let mut context_path = dock_dir;
-        let context_sub_path = context_sub_path.clone();
-        canon_path::abs_path_extend(&mut context_path, context_sub_path);
+        let context_path = dock_dir.concat(context_sub_path);
 
-        let context_path_path_buf =
-            canon_path::abs_path_to_path_buf(context_path.clone());
+        let context_path_path_buf = PathBuf::from(context_path.clone());
 
         let context_path_cli_arg = context_path_path_buf.to_str()
                 .context(InvalidUtf8InContextPath{path: context_path})?;
@@ -341,7 +335,7 @@ struct DockerRebuildInput {
 pub enum NewDockerRebuildInputError {
     #[snafu(display(
         "The path to the Docker context ('{}') contained invalid UTF-8",
-        canon_path::abs_path_display_lossy(path),
+        path.display_lossy(),
     ))]
     InvalidUtf8InContextPath{path: AbsPath},
     #[snafu(display(
@@ -359,7 +353,7 @@ pub enum NewDockerRebuildInputError {
 
 fn prepare_run_args(
     env: &DockEnvironmentConfig,
-    dock_dir: AbsPathRef,
+    dock_dir: &AbsPath,
     vol_name_prefix: &str,
     target_img: &str,
 )
@@ -411,7 +405,7 @@ fn prepare_run_args(
         let mut parsed_mounts = vec![];
         for (rel_outer_path, inner_path) in mounts.iter() {
             let rel_outer_path =
-                canon_path::rel_path_from_path_buf(rel_outer_path)
+                RelPath::try_from(rel_outer_path.clone())
                     .context(ParseConfigOuterPathFailed{
                         rel_outer_path,
                         inner_path,
@@ -479,10 +473,10 @@ fn prepare_run_cache_volumes_args(
     let mut args = vec![];
 
     for (name, path) in cache_volumes.iter() {
-        let path_abs_path = canon_path::abs_path_from_path_buf(path)
+        let path_abs_path = AbsPath::try_from(path.clone())
             .context(CacheVolDirAsAbsPathFailed)?;
 
-        let path_cli_arg = canon_path::abs_path_display(&path_abs_path)
+        let path_cli_arg = path_abs_path.display()
             .context(RenderCacheVolDirFailed{dir: path_abs_path})?;
 
         let vol_name = format!("{}.cache.{}", vol_name_prefix, name);
@@ -524,7 +518,7 @@ pub enum PrepareRunCacheVolumesArgsError {
     CacheVolDirAsAbsPathFailed{source: NewAbsPathError},
     #[snafu(display(
         "Couldn't render the cache volume directory (lossy rendering: '{}')",
-        canon_path::abs_path_display_lossy(dir),
+        dir.display_lossy(),
     ))]
     RenderCacheVolDirFailed{dir: AbsPath},
     #[snafu(display("Couldn't set the ownership of the cache: {}", source))]
@@ -533,7 +527,7 @@ pub enum PrepareRunCacheVolumesArgsError {
 
 fn prepare_run_mount_local_args(
     mount_local: &[DockEnvironmentMountLocalConfig],
-    dock_dir: AbsPathRef,
+    dock_dir: &AbsPath,
     cur_hostpaths: &Option<Hostpaths>,
     workdir: &Option<String>,
 )
@@ -577,11 +571,10 @@ fn prepare_run_mount_local_args(
         // TODO Add `cur_hostpaths` to the error context. See the comment
         // above `NoPathRouteOnHost` for more details.
         let proj_dir_host_path = apply_hostpath(cur_hostpaths, dock_dir)
-            .context(NoProjectPathRouteOnHost{attempted_path: dock_dir})?;
+            .context(NoProjectPathRouteOnHost)?;
 
-        let proj_dir_cli_arg =
-            canon_path::abs_path_display(&proj_dir_host_path)
-                .context(RenderProjectDirFailed{dir: proj_dir_host_path})?;
+        let proj_dir_cli_arg = proj_dir_host_path.display()
+            .context(RenderProjectDirFailed{dir: proj_dir_host_path})?;
 
         let workdir = workdir.as_ref()
             .context(WorkdirNotSet)?;
@@ -605,14 +598,11 @@ pub enum PrepareRunMountLocalArgsError {
     GroupMountedWithoutUser,
     #[snafu(display("Couldn't get metadata for Docker socket: {}", source))]
     GetDockerSockMetadataFailed{source: IoError},
-    #[snafu(display(
-        "No route to the project path '{}' was found on the host",
-        canon_path::abs_path_display_lossy(attempted_path),
-    ))]
-    NoProjectPathRouteOnHost{attempted_path: AbsPath},
+    #[snafu(display("No route to the project path was found on the host"))]
+    NoProjectPathRouteOnHost,
     #[snafu(display(
         "Couldn't render the project directory (lossy rendering: '{}')",
-        canon_path::abs_path_display_lossy(dir),
+        dir.display_lossy(),
     ))]
     RenderProjectDirFailed{dir: AbsPath},
     #[snafu(display("`workdir` is required when `project_dir` is mounted"))]
@@ -674,7 +664,7 @@ pub enum AssertRunError {
 }
 
 fn prepare_run_mount_args(
-    dock_dir: AbsPathRef,
+    dock_dir: &AbsPath,
     mounts: &[(RelPath, &PathBuf)],
     cur_hostpaths: &Option<Hostpaths>,
 )
@@ -682,8 +672,7 @@ fn prepare_run_mount_args(
 {
     let mut hostpath_cli_args = vec![];
     for (rel_outer_path, inner_path) in mounts {
-        let mut path = dock_dir.to_owned();
-        canon_path::abs_path_extend(&mut path, rel_outer_path.clone());
+        let mut path = dock_dir.concat(rel_outer_path);
 
         // TODO Add `cur_hostpaths` to the error context. This ideally requires
         // `&Trie` to implement `Clone` so that a new, owned copy of
@@ -691,7 +680,7 @@ fn prepare_run_mount_args(
         path = apply_hostpath(cur_hostpaths, &path)
             .context(NoPathRouteOnHost{attempted_path: path})?;
 
-        let host_path_cli_arg = canon_path::abs_path_display(&path)
+        let host_path_cli_arg = path.display()
             .context(RenderHostPathFailed{
                 path,
                 inner_path: (*inner_path).clone(),
@@ -741,13 +730,13 @@ fn prepare_run_mount_args(
 pub enum PrepareRunMountArgsError {
     #[snafu(display(
         "No route to the path '{}' was found on the host",
-        canon_path::abs_path_display_lossy(attempted_path),
+        attempted_path.display_lossy(),
     ))]
     NoPathRouteOnHost{attempted_path: AbsPath},
     #[snafu(display(
         "Couldn't render the hostpath mapping to '{}' (lossy rendering: '{}')",
         inner_path.display(),
-        canon_path::abs_path_display_lossy(path),
+        path.display_lossy(),
     ))]
     RenderHostPathFailed{path: AbsPath, inner_path: PathBuf},
     #[snafu(display(
@@ -759,7 +748,83 @@ pub enum PrepareRunMountArgsError {
 
 const DOCK_HOSTPATHS_VAR_NAME: &str = "DOCK_HOSTPATHS";
 
-type Hostpaths = Trie<OsString, RelPath>;
+#[derive(Debug)]
+struct Hostpaths {
+    host_paths: Trie<OsString, AbsPath>,
+}
+
+impl Hostpaths {
+    fn new() -> Hostpaths {
+        Self{host_paths: Trie::new()}
+    }
+
+    fn insert(&mut self, outer_path: AbsPath, inner_path: AbsPath)
+        -> Result<(), HostpathInsertError>
+    {
+        match self.host_paths.insert(&inner_path, outer_path.clone()) {
+            Ok(()) => {
+                Ok(())
+            },
+            Err(err) => {
+                let e =
+                    match err {
+                        InsertError::EmptyKey =>
+                            // TODO These parameters can be added at a higher
+                            // level.
+                            HostpathInsertError::EmptyInnerPath{outer_path},
+                        InsertError::PrefixContainsValue =>
+                            HostpathInsertError::InnerPathAncestorHasMapping{
+                                outer_path,
+                                inner_path,
+                            },
+                        InsertError::DirAtKey =>
+                            HostpathInsertError::InnerPathDescendentHasMapping{
+                                outer_path,
+                                inner_path,
+                            },
+                    };
+
+                Err(e)
+            },
+        }
+    }
+
+    fn lookup(&self, path: &AbsPath) -> Option<AbsPath> {
+        let (prefix, host_dir) = self.host_paths.value_at_prefix(path)?;
+
+        let rel_path: Vec<OsString> =
+            path
+                .iter()
+                .skip(prefix.len())
+                .cloned()
+                .collect();
+
+        let host_path = host_dir.concat(&RelPath::from(rel_path));
+
+        Some(host_path)
+    }
+}
+#[derive(Debug, Snafu)]
+pub enum HostpathInsertError {
+    #[snafu(display(
+        "The path '{}' maps to an empty path",
+        outer_path.display_lossy(),
+    ))]
+    EmptyInnerPath{outer_path: AbsPath},
+    #[snafu(display(
+        "A host path maps to an ancestor of '{}' (which is mapped-to by '{}')",
+        inner_path.display_lossy(),
+        outer_path.display_lossy(),
+    ))]
+    InnerPathAncestorHasMapping{outer_path: AbsPath, inner_path: AbsPath},
+    #[snafu(display(
+        "A host path maps to a descendant of '{}' (which is mapped-to by \
+            '{}')",
+        inner_path.display_lossy(),
+        outer_path.display_lossy(),
+    ))]
+    InnerPathDescendentHasMapping{outer_path: AbsPath, inner_path: AbsPath},
+}
 
 fn hostpaths() -> Result<Option<Hostpaths>, HostpathsError> {
     let raw_hostpaths =
@@ -783,45 +848,28 @@ fn hostpaths() -> Result<Option<Hostpaths>, HostpathsError> {
         })
     }
 
-    let mut hostpaths = Trie::new();
+    let mut hostpaths = Hostpaths::new();
+
+    // TODO Abstract pair extraction.
     for pair in raw_hostpaths.chunks(2) {
         if let [outer_path, inner_path] = pair {
-            let abs_outer_path = canon_path::parse_abs_path(outer_path)
+            let abs_outer_path = AbsPath::parse(outer_path)
                 .context(ParseOuterPathFailed{
                     outer_path: (*outer_path).to_string(),
                     inner_path: (*inner_path).to_string(),
                 })?;
 
-            let abs_inner_path = canon_path::parse_abs_path(inner_path)
+            let abs_inner_path = AbsPath::parse(inner_path)
                 .context(ParseInnerPathFailed{
                     outer_path: (*outer_path).to_string(),
                     inner_path: (*inner_path).to_string(),
                 })?;
 
-            match hostpaths.insert(&abs_inner_path, abs_outer_path) {
-                Ok(()) => {},
-                Err(err) => {
-                    let e =
-                        match err {
-                            InsertError::EmptyKey =>
-                                HostpathsError::EmptyInnerPath{
-                                    outer_path: (*outer_path).to_string(),
-                                },
-                            InsertError::PrefixContainsValue =>
-                                HostpathsError::InnerPathAncestorHasMapping{
-                                    outer_path: (*outer_path).to_string(),
-                                    inner_path: (*inner_path).to_string(),
-                                },
-                            InsertError::DirAtKey =>
-                                HostpathsError::InnerPathDescendentHasMapping{
-                                    outer_path: (*outer_path).to_string(),
-                                    inner_path: (*inner_path).to_string(),
-                                },
-                        };
-
-                    return Err(e);
-                },
-            }
+            hostpaths.insert(abs_outer_path, abs_inner_path)
+                .context(HostpathInsertFailed{
+                    outer_path: (*outer_path).to_string(),
+                    inner_path: (*inner_path).to_string(),
+                })?;
         } else {
             // `chunks(2)` should always return slices of length 2.
             panic!("chunk didn't have length 2: {:?}", pair);
@@ -865,43 +913,25 @@ pub enum HostpathsError {
         outer_path: String,
         inner_path: String,
     },
-    #[snafu(display("The path '{}' maps to an empty path", outer_path))]
-    EmptyInnerPath{outer_path: String},
     #[snafu(display(
-        "A hostname maps to an ancestor of '{}' (which is mapped-to by '{}')",
+        "Couldn't add hostpath mapping '{}' to '{}' to lookup trie: {}",
         inner_path,
         outer_path,
+        source,
     ))]
-    InnerPathAncestorHasMapping{outer_path: String, inner_path: String},
-    #[snafu(display(
-        "A hostname maps to a descendant of '{}' (which is mapped-to by '{}')",
-        inner_path,
-        outer_path,
-    ))]
-    InnerPathDescendentHasMapping{outer_path: String, inner_path: String},
+    HostpathInsertFailed{
+        source: HostpathInsertError,
+        outer_path: String,
+        inner_path: String,
+    },
 }
 
-fn apply_hostpath(maybe_hostpaths: &Option<Hostpaths>, path: AbsPathRef)
+fn apply_hostpath(maybe_hostpaths: &Option<Hostpaths>, path: &AbsPath)
     -> Option<AbsPath>
 {
-    let hostpaths =
-        if let Some(v) = maybe_hostpaths {
-            v
-        } else {
-            return Some(path.to_vec());
-        };
-
-    let (prefix, host_dir) = hostpaths.value_at_prefix(path)?;
-
-    let rel_path: Vec<OsString> =
-        path
-            .iter()
-            .skip(prefix.len())
-            .cloned()
-            .collect();
-
-    let mut host_path = host_dir.clone();
-    host_path.extend(rel_path);
-
-    Some(host_path)
+    if let Some(hps) = maybe_hostpaths {
+        hps.lookup(path)
+    } else {
+        Some(path.clone())
+    }
 }
