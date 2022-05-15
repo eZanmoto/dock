@@ -90,14 +90,10 @@ pub fn run_with_extra_prefix_args(
         tagged_image_name(&conf.organisation, &conf.project, env_name);
 
     let env_context =
-        if let Some(path) = &env.context {
-            let p = path::rel_path_from_path_buf(path)
-                .context(RelPathFromContextPathFailed)?;
-
-            Some(p)
-        } else {
-            None
-        };
+        env.context
+            .as_ref()
+            .and_maybe_then(|path| path::rel_path_from_path_buf(path))
+            .context(RelPathFromContextPathFailed)?;
 
     rebuild_for_run(
         &dock_dir,
@@ -176,6 +172,28 @@ fn tagged_image_name(org: &str, proj: &str, env_name: &str) -> String {
     let img_name = format!("{}/{}.{}", org, proj, env_name);
 
     format!("{}:latest", img_name)
+}
+
+trait OptionResultExt<T> {
+    fn and_maybe_then<U, F, E>(self, f: F) -> Result<Option<U>, E>
+    where
+        F: FnOnce(T) -> Result<U, E>;
+}
+
+impl<T> OptionResultExt<T> for Option<T> {
+    fn and_maybe_then<U, F, E>(self, f: F) -> Result<Option<U>, E>
+    where
+        F: FnOnce(T) -> Result<U, E>,
+    {
+        if let Some(value) = self {
+            match f(value) {
+                Ok(v) => Ok(Some(v)),
+                Err(e) => Err(e),
+            }
+        } else {
+            Ok(None)
+        }
+    }
 }
 
 fn find_and_parse_dock_config(dock_file_name: &str)
