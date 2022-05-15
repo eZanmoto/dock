@@ -103,7 +103,12 @@ pub fn run_with_extra_prefix_args(
     )
         .context(RebuildForRunFailed)?;
 
-    let proj = Project{org: conf.organisation, name: conf.project};
+    let vol_name_prefix = format!(
+        "{}.{}.{}",
+        conf.organisation,
+        conf.project,
+        env_name,
+    );
 
     let dock_dir = path::abs_path_from_path_buf(&dock_dir)
         .context(AbsPathFromDockDirFailed{dock_dir})?;
@@ -113,8 +118,7 @@ pub fn run_with_extra_prefix_args(
     run_args.extend(extra_prefix_args);
 
     let main_run_args = prepare_run_args(
-        &proj,
-        env_name,
+        &vol_name_prefix,
         env,
         &target_img,
         &dock_dir,
@@ -126,6 +130,8 @@ pub fn run_with_extra_prefix_args(
     run_args.push(target_img);
 
     run_args.extend(to_strings(extra_run_args));
+
+    // TODO Perform the side effects of `prepare_run_cache_volumes_args` here.
 
     let exit_status = docker::stream_run(run_args)
         .context(DockerRunFailed)?;
@@ -260,12 +266,6 @@ pub enum ParseDockConfigError {
     ParseSchemaFailed{source: SerdeYamlError},
 }
 
-#[derive(Debug)]
-struct Project{
-    org: String,
-    name: String,
-}
-
 fn rebuild_for_run(
     dock_dir: &Path,
     env_name: &str,
@@ -389,8 +389,7 @@ pub enum NewDockerRebuildInputError {
 }
 
 fn prepare_run_args(
-    proj: &Project,
-    env_name: &str,
+    vol_name_prefix: &str,
     env: &DockEnvironmentConfig,
     target_img: &str,
     dock_dir: AbsPathRef,
@@ -402,8 +401,7 @@ fn prepare_run_args(
     if let Some(cache_volumes) = &env.cache_volumes {
         let args = prepare_run_cache_volumes_args(
             cache_volumes,
-            proj,
-            env_name,
+            vol_name_prefix,
             target_img,
         )
             .context(PrepareRunCacheVolumesArgsFailed)?;
@@ -503,8 +501,7 @@ pub enum PrepareRunArgsError {
 // dedicated function of its own.
 fn prepare_run_cache_volumes_args(
     cache_volumes: &HashMap<String, PathBuf>,
-    proj: &Project,
-    env_name: &str,
+    vol_name_prefix: &str,
     target_img: &str,
 )
     -> Result<Vec<String>, PrepareRunCacheVolumesArgsError>
@@ -518,13 +515,7 @@ fn prepare_run_cache_volumes_args(
         let path_cli_arg = path::abs_path_display(&path_abs_path)
             .context(RenderCacheVolDirFailed{dir: path_abs_path})?;
 
-        let vol_name = format!(
-            "{}.{}.{}.cache.{}",
-            proj.org,
-            proj.name,
-            env_name,
-            name,
-        );
+        let vol_name = format!("{}.cache.{}", vol_name_prefix, name);
         let mount_spec =
             format!("type=volume,src={},dst={}", vol_name, path_cli_arg);
         let mount_arg = format!("--mount={}", mount_spec);
