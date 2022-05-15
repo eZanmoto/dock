@@ -804,6 +804,7 @@ impl Hostpaths {
         Some(host_path)
     }
 }
+
 #[derive(Debug, Snafu)]
 pub enum HostpathInsertError {
     #[snafu(display(
@@ -826,6 +827,74 @@ pub enum HostpathInsertError {
     InnerPathDescendentHasMapping{outer_path: AbsPath, inner_path: AbsPath},
 }
 
+impl TryFrom<Vec<(&str, &str)>> for Hostpaths {
+    type Error = HostpathFromPairsError;
+
+    fn try_from(pairs: Vec<(&str, &str)>) -> Result<Self, Self::Error> {
+        let mut hps = Hostpaths::new();
+
+        for (outer_path, inner_path) in pairs {
+            let abs_outer_path = AbsPath::parse(outer_path)
+                .context(ParseOuterPathFailed{
+                    outer_path: (*outer_path).to_string(),
+                    inner_path: (*inner_path).to_string(),
+                })?;
+
+            let abs_inner_path = AbsPath::parse(inner_path)
+                .context(ParseInnerPathFailed{
+                    outer_path: (*outer_path).to_string(),
+                    inner_path: (*inner_path).to_string(),
+                })?;
+
+            hps.insert(abs_outer_path, abs_inner_path)
+                .context(HostpathInsertFailed{
+                    outer_path: (*outer_path).to_string(),
+                    inner_path: (*inner_path).to_string(),
+                })?;
+        }
+
+        Ok(hps)
+    }
+}
+
+#[allow(clippy::enum_variant_names)]
+#[derive(Debug, Snafu)]
+pub enum HostpathFromPairsError {
+    #[snafu(display(
+        "Couldn't parse '{}' as an absolute path (mapped to '{}'): {}",
+        inner_path,
+        outer_path,
+        source,
+    ))]
+    ParseOuterPathFailed{
+        source: NewAbsPathError,
+        outer_path: String,
+        inner_path: String,
+    },
+    #[snafu(display(
+        "Couldn't parse '{}' as an absolute path (mapped from '{}'): {}",
+        outer_path,
+        inner_path,
+        source,
+    ))]
+    ParseInnerPathFailed{
+        source: NewAbsPathError,
+        outer_path: String,
+        inner_path: String,
+    },
+    #[snafu(display(
+        "Couldn't add hostpath mapping '{}' to '{}' to hostpaths: {}",
+        inner_path,
+        outer_path,
+        source,
+    ))]
+    HostpathInsertFailed{
+        source: HostpathInsertError,
+        outer_path: String,
+        inner_path: String,
+    },
+}
+
 fn hostpaths() -> Result<Option<Hostpaths>, HostpathsError> {
     let raw_hostpaths =
         match env::var(DOCK_HOSTPATHS_VAR_NAME) {
@@ -842,39 +911,11 @@ fn hostpaths() -> Result<Option<Hostpaths>, HostpathsError> {
 
     let raw_hostpaths: Vec<&str> = raw_hostpaths.split(':').collect();
 
-    if raw_hostpaths.len() % 2 == 1 {
-        return Err(HostpathsError::UnmatchedHostpath{
-            hostpaths: to_strings(&raw_hostpaths),
-        })
-    }
+    let pairs = pairs(&raw_hostpaths)
+        .context(UnmatchedHostpath{hostpaths: to_strings(&raw_hostpaths) })?;
 
-    let mut hostpaths = Hostpaths::new();
-
-    // TODO Abstract pair extraction.
-    for pair in raw_hostpaths.chunks(2) {
-        if let [outer_path, inner_path] = pair {
-            let abs_outer_path = AbsPath::parse(outer_path)
-                .context(ParseOuterPathFailed{
-                    outer_path: (*outer_path).to_string(),
-                    inner_path: (*inner_path).to_string(),
-                })?;
-
-            let abs_inner_path = AbsPath::parse(inner_path)
-                .context(ParseInnerPathFailed{
-                    outer_path: (*outer_path).to_string(),
-                    inner_path: (*inner_path).to_string(),
-                })?;
-
-            hostpaths.insert(abs_outer_path, abs_inner_path)
-                .context(HostpathInsertFailed{
-                    outer_path: (*outer_path).to_string(),
-                    inner_path: (*inner_path).to_string(),
-                })?;
-        } else {
-            // `chunks(2)` should always return slices of length 2.
-            panic!("chunk didn't have length 2: {:?}", pair);
-        }
-    }
+    let hostpaths = Hostpaths::try_from(pairs)
+        .context(CreateHostpathsFailed)?;
 
     Ok(Some(hostpaths))
 }
@@ -892,38 +933,30 @@ pub enum HostpathsError {
     ))]
     UnmatchedHostpath{hostpaths: Vec<String>},
     #[snafu(display(
-        "Couldn't parse '{}' as an absolute path (mapped to '{}'): {}",
-        inner_path,
-        outer_path,
+        "Couldn't create hostpaths from '${}': {}",
+        DOCK_HOSTPATHS_VAR_NAME,
         source,
     ))]
-    ParseOuterPathFailed{
-        source: NewAbsPathError,
-        outer_path: String,
-        inner_path: String,
-    },
-    #[snafu(display(
-        "Couldn't parse '{}' as an absolute path (mapped to '{}'): {}",
-        inner_path,
-        outer_path,
-        source,
-    ))]
-    ParseInnerPathFailed{
-        source: NewAbsPathError,
-        outer_path: String,
-        inner_path: String,
-    },
-    #[snafu(display(
-        "Couldn't add hostpath mapping '{}' to '{}' to lookup trie: {}",
-        inner_path,
-        outer_path,
-        source,
-    ))]
-    HostpathInsertFailed{
-        source: HostpathInsertError,
-        outer_path: String,
-        inner_path: String,
-    },
+    CreateHostpathsFailed{source: HostpathFromPairsError},
+}
+
+fn pairs<'a, T: Debug + ?Sized>(xs: &[&'a T]) -> Option<Vec<(&'a T, &'a T)>> {
+    if xs.len() % 2 == 1 {
+        return None;
+    }
+
+    let mut pairs = Vec::with_capacity(xs.len() / 2);
+
+    for pair in xs.chunks(2) {
+        if let [a, b] = pair {
+            pairs.push((*a, *b));
+        } else {
+            // `chunks(2)` should always return slices of length 2.
+            panic!("chunk didn't have length 2: {:?}", pair);
+        }
+    }
+
+    Some(pairs)
 }
 
 fn apply_hostpath(maybe_hostpaths: &Option<Hostpaths>, path: &AbsPath)
