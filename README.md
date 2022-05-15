@@ -18,6 +18,10 @@ articles discussing the ideas captured by this project.
 Usage
 -----
 
+### `dock`
+
+`dock` runs the `shell` subcommand by default if no subcommand is given.
+
 ### `dock rebuild`
 
 `dock rebuild` takes the same arguments as `docker build`, but requires the

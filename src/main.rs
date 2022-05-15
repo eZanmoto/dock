@@ -102,7 +102,7 @@ fn main() {
             process::exit(exit_code);
         },
         Some(("shell", sub_args)) => {
-            let exit_code = shell(dock_file_name, sub_args);
+            let exit_code = shell(dock_file_name, Some(sub_args));
             process::exit(exit_code);
         },
         Some((arg_name, sub_args)) => {
@@ -115,7 +115,8 @@ fn main() {
             );
         },
         _ => {
-            // TODO Run default command.
+            let exit_code = shell(dock_file_name, None);
+            process::exit(exit_code);
         },
     }
 }
@@ -181,16 +182,16 @@ fn run(dock_file_name: &str, args: &ArgMatches) -> i32 {
             None => vec![],
         };
 
-    handle_run(dock_file_name, args, &[], &cmd_args)
+    handle_run(dock_file_name, Some(args), &[], &cmd_args)
 }
 
 fn handle_run(
     dock_file_name: &str,
-    args: &ArgMatches,
+    args: Option<&ArgMatches>,
     flags: &[&str],
     cmd_args: &[&str],
 ) -> i32 {
-    let env_name = args.value_of(ENV_FLAG);
+    let env_name = args.and_then(|a| a.value_of(ENV_FLAG));
 
     let result = run::run(dock_file_name, env_name, flags, cmd_args);
     match result {
@@ -230,7 +231,7 @@ fn handle_run(
     }
 }
 
-fn shell(dock_file_name: &str, args: &ArgMatches) -> i32 {
+fn shell(dock_file_name: &str, args: Option<&ArgMatches>) -> i32 {
     handle_run(
         dock_file_name,
         args,
