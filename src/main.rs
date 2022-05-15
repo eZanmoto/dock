@@ -18,7 +18,7 @@ use clap::SubCommand;
 mod docker;
 mod fs;
 mod option;
-mod path;
+mod canon_path;
 mod rebuild;
 mod run;
 mod trie;

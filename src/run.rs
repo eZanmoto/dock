@@ -33,12 +33,12 @@ use crate::docker::StreamRunError;
 use crate::fs;
 use crate::fs::FindAndOpenFileError;
 use crate::option::OptionResultExt;
-use crate::path;
-use crate::path::AbsPath;
-use crate::path::AbsPathRef;
-use crate::path::NewAbsPathError;
-use crate::path::NewRelPathError;
-use crate::path::RelPath;
+use crate::canon_path;
+use crate::canon_path::AbsPath;
+use crate::canon_path::AbsPathRef;
+use crate::canon_path::NewAbsPathError;
+use crate::canon_path::NewRelPathError;
+use crate::canon_path::RelPath;
 use crate::rebuild;
 use crate::rebuild::RebuildError;
 use crate::rebuild::RebuildWithCapturedOutputError;
@@ -93,7 +93,7 @@ pub fn run(
     let env_context =
         env.context
             .as_ref()
-            .and_maybe_then(|path| path::rel_path_from_path_buf(path))
+            .and_maybe_then(|path| canon_path::rel_path_from_path_buf(path))
             .context(RelPathFromContextPathFailed)?;
 
     rebuild_for_run(dock_dir.clone(), env_name, &env_context, &target_img)
@@ -171,7 +171,7 @@ fn find_and_parse_dock_config(dock_file_name: &str)
     let conf = parse_dock_config(conf_reader)
         .context(ParseDockConfigFailed)?;
 
-    let dock_dir = path::abs_path_from_path_buf(&dock_dir)
+    let dock_dir = canon_path::abs_path_from_path_buf(&dock_dir)
         .context(AbsPathFromDockDirFailed{dock_dir})?;
 
     Ok((dock_dir, conf))
@@ -240,7 +240,8 @@ fn rebuild_for_run(
 )
     -> Result<(), RebuildForRunError>
 {
-    let mut dockerfile_path = path::abs_path_to_path_buf(dock_dir.clone());
+    let mut dockerfile_path =
+        canon_path::abs_path_to_path_buf(dock_dir.clone());
     dockerfile_path.push(format!("{}.Dockerfile", env_name));
 
     let docker_rebuild_input_result = new_docker_rebuild_input(
@@ -299,10 +300,11 @@ fn new_docker_rebuild_input(
 {
     if let Some(context_sub_path) = maybe_context_sub_path {
         let mut context_path = dock_dir;
-        path::abs_path_extend(&mut context_path, context_sub_path.clone());
+        let context_sub_path = context_sub_path.clone();
+        canon_path::abs_path_extend(&mut context_path, context_sub_path);
 
         let context_path_path_buf =
-            path::abs_path_to_path_buf(context_path.clone());
+            canon_path::abs_path_to_path_buf(context_path.clone());
 
         let context_path_cli_arg = context_path_path_buf.to_str()
                 .context(InvalidUtf8InContextPath{path: context_path})?;
@@ -339,7 +341,7 @@ struct DockerRebuildInput {
 pub enum NewDockerRebuildInputError {
     #[snafu(display(
         "The path to the Docker context ('{}') contained invalid UTF-8",
-        path::abs_path_display_lossy(path),
+        canon_path::abs_path_display_lossy(path),
     ))]
     InvalidUtf8InContextPath{path: AbsPath},
     #[snafu(display(
@@ -408,11 +410,12 @@ fn prepare_run_args(
     if let Some(mounts) = &env.mounts {
         let mut parsed_mounts = vec![];
         for (rel_outer_path, inner_path) in mounts.iter() {
-            let rel_outer_path = path::rel_path_from_path_buf(rel_outer_path)
-                .context(ParseConfigOuterPathFailed{
-                    rel_outer_path,
-                    inner_path,
-                })?;
+            let rel_outer_path =
+                canon_path::rel_path_from_path_buf(rel_outer_path)
+                    .context(ParseConfigOuterPathFailed{
+                        rel_outer_path,
+                        inner_path,
+                    })?;
 
             parsed_mounts.push((rel_outer_path, inner_path));
         }
@@ -476,10 +479,10 @@ fn prepare_run_cache_volumes_args(
     let mut args = vec![];
 
     for (name, path) in cache_volumes.iter() {
-        let path_abs_path = path::abs_path_from_path_buf(path)
+        let path_abs_path = canon_path::abs_path_from_path_buf(path)
             .context(CacheVolDirAsAbsPathFailed)?;
 
-        let path_cli_arg = path::abs_path_display(&path_abs_path)
+        let path_cli_arg = canon_path::abs_path_display(&path_abs_path)
             .context(RenderCacheVolDirFailed{dir: path_abs_path})?;
 
         let vol_name = format!("{}.cache.{}", vol_name_prefix, name);
@@ -521,7 +524,7 @@ pub enum PrepareRunCacheVolumesArgsError {
     CacheVolDirAsAbsPathFailed{source: NewAbsPathError},
     #[snafu(display(
         "Couldn't render the cache volume directory (lossy rendering: '{}')",
-        path::abs_path_display_lossy(dir),
+        canon_path::abs_path_display_lossy(dir),
     ))]
     RenderCacheVolDirFailed{dir: AbsPath},
     #[snafu(display("Couldn't set the ownership of the cache: {}", source))]
@@ -576,8 +579,9 @@ fn prepare_run_mount_local_args(
         let proj_dir_host_path = apply_hostpath(cur_hostpaths, dock_dir)
             .context(NoProjectPathRouteOnHost{attempted_path: dock_dir})?;
 
-        let proj_dir_cli_arg = path::abs_path_display(&proj_dir_host_path)
-            .context(RenderProjectDirFailed{dir: proj_dir_host_path})?;
+        let proj_dir_cli_arg =
+            canon_path::abs_path_display(&proj_dir_host_path)
+                .context(RenderProjectDirFailed{dir: proj_dir_host_path})?;
 
         let workdir = workdir.as_ref()
             .context(WorkdirNotSet)?;
@@ -603,12 +607,12 @@ pub enum PrepareRunMountLocalArgsError {
     GetDockerSockMetadataFailed{source: IoError},
     #[snafu(display(
         "No route to the project path '{}' was found on the host",
-        path::abs_path_display_lossy(attempted_path),
+        canon_path::abs_path_display_lossy(attempted_path),
     ))]
     NoProjectPathRouteOnHost{attempted_path: AbsPath},
     #[snafu(display(
         "Couldn't render the project directory (lossy rendering: '{}')",
-        path::abs_path_display_lossy(dir),
+        canon_path::abs_path_display_lossy(dir),
     ))]
     RenderProjectDirFailed{dir: AbsPath},
     #[snafu(display("`workdir` is required when `project_dir` is mounted"))]
@@ -679,7 +683,7 @@ fn prepare_run_mount_args(
     let mut hostpath_cli_args = vec![];
     for (rel_outer_path, inner_path) in mounts {
         let mut path = dock_dir.to_owned();
-        path::abs_path_extend(&mut path, rel_outer_path.clone());
+        canon_path::abs_path_extend(&mut path, rel_outer_path.clone());
 
         // TODO Add `cur_hostpaths` to the error context. This ideally requires
         // `&Trie` to implement `Clone` so that a new, owned copy of
@@ -687,7 +691,7 @@ fn prepare_run_mount_args(
         path = apply_hostpath(cur_hostpaths, &path)
             .context(NoPathRouteOnHost{attempted_path: path})?;
 
-        let host_path_cli_arg = path::abs_path_display(&path)
+        let host_path_cli_arg = canon_path::abs_path_display(&path)
             .context(RenderHostPathFailed{
                 path,
                 inner_path: (*inner_path).clone(),
@@ -737,13 +741,13 @@ fn prepare_run_mount_args(
 pub enum PrepareRunMountArgsError {
     #[snafu(display(
         "No route to the path '{}' was found on the host",
-        path::abs_path_display_lossy(attempted_path),
+        canon_path::abs_path_display_lossy(attempted_path),
     ))]
     NoPathRouteOnHost{attempted_path: AbsPath},
     #[snafu(display(
         "Couldn't render the hostpath mapping to '{}' (lossy rendering: '{}')",
         inner_path.display(),
-        path::abs_path_display_lossy(path),
+        canon_path::abs_path_display_lossy(path),
     ))]
     RenderHostPathFailed{path: AbsPath, inner_path: PathBuf},
     #[snafu(display(
@@ -782,13 +786,13 @@ fn hostpaths() -> Result<Option<Hostpaths>, HostpathsError> {
     let mut hostpaths = Trie::new();
     for pair in raw_hostpaths.chunks(2) {
         if let [outer_path, inner_path] = pair {
-            let abs_outer_path = path::parse_abs_path(outer_path)
+            let abs_outer_path = canon_path::parse_abs_path(outer_path)
                 .context(ParseOuterPathFailed{
                     outer_path: (*outer_path).to_string(),
                     inner_path: (*inner_path).to_string(),
                 })?;
 
-            let abs_inner_path = path::parse_abs_path(inner_path)
+            let abs_inner_path = canon_path::parse_abs_path(inner_path)
                 .context(ParseInnerPathFailed{
                     outer_path: (*outer_path).to_string(),
                     inner_path: (*inner_path).to_string(),
