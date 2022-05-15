@@ -86,14 +86,8 @@ pub fn run_with_extra_prefix_args(
     let env = conf.environments.get(env_name)
         .context(EnvironmentNotFound{env_name})?;
 
-    let img_name = format!(
-        "{}/{}.{}",
-        conf.organisation,
-        conf.project,
-        env_name,
-    );
-
-    let target_img = format!("{}:latest", &img_name);
+    let target_img =
+        tagged_image_name(&conf.organisation, &conf.project, env_name);
 
     let env_context =
         if let Some(path) = &env.context {
@@ -176,6 +170,12 @@ pub enum RunWithExtraPrefixArgsError {
     PrepareRunArgsFailed{source: PrepareRunArgsError},
     #[snafu(display("`docker run` failed: {}", source))]
     DockerRunFailed{source: StreamRunError},
+}
+
+fn tagged_image_name(org: &str, proj: &str, env_name: &str) -> String {
+    let img_name = format!("{}/{}.{}", org, proj, env_name);
+
+    format!("{}:latest", img_name)
 }
 
 fn find_and_parse_dock_config(dock_file_name: &str)
