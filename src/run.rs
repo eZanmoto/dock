@@ -2,6 +2,7 @@
 // Use of this source code is governed by an MIT
 // licence that can be found in the LICENCE file.
 
+use std::char;
 use std::collections::HashMap;
 use std::env;
 use std::env::VarError;
@@ -127,7 +128,11 @@ pub fn run(
 // include it for now for simplicity.
 #[derive(Debug, Snafu)]
 pub enum RunError {
-    #[snafu(display("Couldn't find and parse '': {}", source))]
+    #[snafu(display(
+        "Couldn't find and parse '{}': {}",
+        dock_file_name,
+        source,
+    ))]
     FindAndParseDockConfigFailed{
         source: FindAndParseDockConfigError,
         dock_file_name: String,
@@ -169,10 +174,23 @@ fn find_and_parse_dock_config(dock_file_name: &str)
     let conf = parse_dock_config(conf_reader)
         .context(ParseDockConfigFailed)?;
 
+    for env in conf.environments.keys() {
+        let position = env.chars().position(|c| !is_env_name_char(c));
+        if let Some(pos) = position {
+            let name = env.to_string();
+            let e = FindAndParseDockConfigError::InvalidEnvName{name, pos};
+            return Err(e);
+        }
+    }
+
     let dock_dir = AbsPath::try_from(dock_dir.clone())
         .context(DockDirAsAbsPathFailed{dock_dir})?;
 
     Ok((dock_dir, conf))
+}
+
+fn is_env_name_char(c: char) -> bool {
+    c == '.' || c == '_' || c.is_ascii_lowercase() || c.is_ascii_digit()
 }
 
 #[derive(Debug, Snafu)]
@@ -192,6 +210,18 @@ pub enum FindAndParseDockConfigError {
         source,
     ))]
     DockDirAsAbsPathFailed{source: NewAbsPathError, dock_dir: PathBuf},
+    #[snafu(display(
+        "Invalid character '{}' at position {} in environment name '{}' \
+            (environment names may only contain periods, underscores, ASCII \
+            digits, and lowercase ASCII letters)",
+        name
+            .chars()
+            .nth(*pos)
+            .unwrap(),
+        pos,
+        name,
+    ))]
+    InvalidEnvName{name: String, pos: usize},
 }
 
 fn parse_dock_config(file: File) -> Result<DockConfig, ParseDockConfigError> {

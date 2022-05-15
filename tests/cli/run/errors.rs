@@ -502,3 +502,30 @@ fn unsupported_schema_version() {
         // (B)
         .stderr(predicate_str::contains("Only `schema_version` 0.1"));
 }
+
+#[test]
+// Given (1) the dock file specifies an environment with a capital letter
+// When `run <env> true` is run
+// Then (A) the command returns an exit code of 1
+//     AND (B) the command STDERR contains the name of the environment
+fn invalid_environment_name() {
+    let test_name = "invalid_environment_name";
+    let test_dir = test_setup::assert_create_root_dir(test_name);
+    let env_name = "invalidName";
+    // (1)
+    let dock_file = test_setup::render_dock_file("0.1", env_name, "{}");
+    let dockerfile_name: &str = &format!("{}.Dockerfile", env_name);
+    let fs_state = &hashmap!{
+        dockerfile_name => "FROM scratch",
+        "dock.yaml" => &dock_file,
+    };
+    test_setup::assert_write_fs_state(&test_dir, fs_state);
+
+    let cmd_result = success::run_test_cmd(&test_dir, &[env_name, "true"]);
+
+    cmd_result
+        // (A)
+        .code(1)
+        // (B)
+        .stderr(predicate_str::contains(env_name));
+}

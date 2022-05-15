@@ -24,6 +24,7 @@ fn shell_uses_correct_image() {
         fs: &hashmap!{},
     });
     let mut pty = unsafe { Expecter::new(
+        // TODO Abstract the `dock` program being tested.
         "/app/target/debug/dock",
         &["shell", test_name],
         // We use a long timeout to give `dock` time to rebuild the image
