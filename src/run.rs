@@ -27,23 +27,23 @@ use snafu::ResultExt;
 use snafu::OptionExt;
 use snafu::Snafu;
 
-use docker;
-use docker::AssertRunError as DockerAssertRunError;
-use docker::StreamRunError;
-use fs;
-use fs::FindAndOpenFileError;
-use option::OptionResultExt;
-use path;
-use path::AbsPath;
-use path::AbsPathRef;
-use path::NewAbsPathError;
-use path::NewRelPathError;
-use path::RelPath;
-use rebuild;
-use rebuild::RebuildError;
-use rebuild::RebuildWithCapturedOutputError;
-use trie::InsertError;
-use trie::Trie;
+use crate::docker;
+use crate::docker::AssertRunError as DockerAssertRunError;
+use crate::docker::StreamRunError;
+use crate::fs;
+use crate::fs::FindAndOpenFileError;
+use crate::option::OptionResultExt;
+use crate::path;
+use crate::path::AbsPath;
+use crate::path::AbsPathRef;
+use crate::path::NewAbsPathError;
+use crate::path::NewRelPathError;
+use crate::path::RelPath;
+use crate::rebuild;
+use crate::rebuild::RebuildError;
+use crate::rebuild::RebuildWithCapturedOutputError;
+use crate::trie::InsertError;
+use crate::trie::Trie;
 
 #[derive(Deserialize)]
 struct DockConfig {

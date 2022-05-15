@@ -9,11 +9,6 @@ use std::process;
 use std::process::ExitStatus;
 use std::str;
 
-extern crate clap;
-extern crate serde;
-extern crate serde_yaml;
-extern crate snafu;
-
 use clap::App;
 use clap::AppSettings;
 use clap::Arg;

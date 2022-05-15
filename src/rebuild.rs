@@ -15,10 +15,10 @@ use std::process::Stdio;
 use snafu::ResultExt;
 use snafu::Snafu;
 
-use docker;
-use docker::AssertRunError;
-use docker::GetImageIdsError;
-use docker::StreamRunError;
+use crate::docker;
+use crate::docker::AssertRunError;
+use crate::docker::GetImageIdsError;
+use crate::docker::StreamRunError;
 
 pub fn rebuild_with_streaming_output(target_img: &str, args: Vec<&str>)
     -> Result<ExitStatus, RebuildError<ExitStatus, StreamRunError>>
