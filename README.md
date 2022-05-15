@@ -50,6 +50,7 @@ separate `build.Dockerfile`, and which also has the following `dock.yaml:
 schema_version: '0.1'
 organisation: 'ezanmoto'
 project: 'dock'
+default_shell_env: 'build'
 
 environments:
   build: {}
@@ -73,6 +74,7 @@ the environment block. All fields in the environment block are optional.
 schema_version: '0.1'
 organisation: 'ezanmoto'
 project: 'dock'
+default_shell_env: 'build'
 
 environments:
   build:
@@ -101,6 +103,8 @@ environments:
       ./relative/path: /inner/path
 ```
 
+* `default_shell_env`: This is the environment that `dock shell` will spawn a
+  shell in if no environment is provided.
 * `workdir`: This defines the directory that the command is run in inside the
   container.
 * `args`: These `args` are passed to the underlying `docker run` command in the

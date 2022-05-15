@@ -62,6 +62,7 @@ pub fn render_dock_file(schema_vsn: &str, env_name: &str, env_defn: &str)
             schema_version: '{schema_vsn}'
             organisation: '{test_org}'
             project: '{test_proj}'
+            default_shell_env: '{env_name}'
 
             environments:
               {env_name}:

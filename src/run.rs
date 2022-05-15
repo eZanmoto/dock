@@ -49,6 +49,7 @@ struct DockConfig {
     schema_version: String,
     organisation: String,
     project: String,
+    default_shell_env: String,
     environments: HashMap<String, DockEnvironmentConfig>
 }
 
@@ -76,15 +77,17 @@ enum DockEnvironmentMountLocalConfig {
 
 pub fn run(
     dock_file_name: &str,
-    env_name: &str,
+    maybe_env_name: Option<&str>,
     flags: &[&str],
     cmd_args: &[&str],
 ) -> Result<ExitStatus, RunError> {
     let (dock_dir, conf) = find_and_parse_dock_config(dock_file_name)
         .context(FindAndParseDockConfigFailed{dock_file_name})?;
 
+    let env_name = maybe_env_name.unwrap_or(&conf.default_shell_env);
+
     let env = conf.environments.get(env_name)
-        .context(EnvironmentNotFound{env_name})?;
+        .context(EnvironmentNotFound{name: env_name})?;
 
     let target_img =
         tagged_image_name(&conf.organisation, &conf.project, env_name);
@@ -137,8 +140,8 @@ pub enum RunError {
         source: FindAndParseDockConfigError,
         dock_file_name: String,
     },
-    #[snafu(display("Dock environment '{}' isn't defined", env_name))]
-    EnvironmentNotFound{env_name: String},
+    #[snafu(display("Dock environment '{}' isn't defined", name))]
+    EnvironmentNotFound{name: String},
     #[snafu(display(
         "Couldn't get path to the context directory as a relative path: {}",
         source,
@@ -174,6 +177,11 @@ fn find_and_parse_dock_config(dock_file_name: &str)
     let conf = parse_dock_config(conf_reader)
         .context(ParseDockConfigFailed)?;
 
+    if !conf.environments.contains_key(&conf.default_shell_env) {
+        let env = conf.default_shell_env;
+        return Err(FindAndParseDockConfigError::DefaultShellEnvMissing{env});
+    }
+
     for env in conf.environments.keys() {
         let position = env.chars().position(|c| !is_env_name_char(c));
         if let Some(pos) = position {
@@ -203,6 +211,8 @@ pub enum FindAndParseDockConfigError {
     OpenDockFileFailed{source: FindAndOpenFileError},
     #[snafu(display("Couldn't parse: {}", source))]
     ParseDockConfigFailed{source: ParseDockConfigError},
+    #[snafu(display("`default_shell_env` '{}' isn't defined", env))]
+    DefaultShellEnvMissing{env: String},
     #[snafu(display(
         "Couldn't get path to current Dock directory ('{}') as an absolute \
             path: {}",

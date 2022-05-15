@@ -186,8 +186,7 @@ fn handle_run(
     args: &ArgMatches,
     extra_prefix_args: &[&str],
 ) -> i32 {
-    // TODO Make this variable required.
-    let env_name = args.value_of(ENV_FLAG).unwrap();
+    let env_name = args.value_of(ENV_FLAG);
 
     let extra_run_args =
         match args.values_of(DOCKER_ARGS_FLAG) {
