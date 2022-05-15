@@ -118,16 +118,24 @@ pub fn run_with_extra_prefix_args(
     let dock_dir = path::abs_path_from_path_buf(&dock_dir)
         .context(AbsPathFromDockDirFailed{dock_dir})?;
 
-    let run_args = prepare_run_args(
+    let mut run_args = to_strings(&["run"]);
+
+    run_args.extend(extra_prefix_args);
+
+    let main_run_args = prepare_run_args(
         &proj,
         env_name,
         env,
-        target_img,
-        extra_run_args,
+        &target_img,
         &dock_dir,
-        extra_prefix_args,
     )
         .context(PrepareRunArgsFailed)?;
+
+    run_args.extend(main_run_args);
+
+    run_args.push(target_img);
+
+    run_args.extend(to_strings(extra_run_args));
 
     let exit_status = docker::stream_run(run_args)
         .context(DockerRunFailed)?;
@@ -366,23 +374,19 @@ fn prepare_run_args(
     proj: &Project,
     env_name: &str,
     env: &DockEnvironmentConfig,
-    target_img: String,
-    extra_args: &[&str],
+    target_img: &str,
     dock_dir: AbsPathRef,
-    extra_prefix_args: Vec<String>,
 )
     -> Result<Vec<String>, PrepareRunArgsError>
 {
-    let mut run_args = to_strings(&["run", "--rm"]);
-
-    run_args.extend(extra_prefix_args);
+    let mut run_args = to_strings(&["--rm"]);
 
     if let Some(cache_volumes) = &env.cache_volumes {
         let args = prepare_run_cache_volumes_args(
             cache_volumes,
             proj,
             env_name,
-            &target_img,
+            target_img,
         )
             .context(PrepareRunCacheVolumesArgsFailed)?;
 
@@ -436,10 +440,6 @@ fn prepare_run_args(
 
         run_args.extend(args);
     }
-
-    run_args.push(target_img);
-
-    run_args.extend(to_strings(extra_args));
 
     Ok(run_args)
 }
