@@ -95,9 +95,6 @@ pub fn run(
             .and_maybe_then(|path| path::rel_path_from_path_buf(path))
             .context(RelPathFromContextPathFailed)?;
 
-    let dock_dir = path::abs_path_from_path_buf(&dock_dir)
-        .context(AbsPathFromDockDirFailed{dock_dir})?;
-
     rebuild_for_run(
         dock_dir.clone(),
         env_name,
@@ -159,13 +156,6 @@ pub enum RunError {
     #[snafu(display("{}", source))]
     RebuildForRunFailed{source: RebuildForRunError},
     #[snafu(display(
-        "Couldn't get path to current Dock directory ('{}') as an absolute \
-            path: {}",
-        dock_dir.display(),
-        source,
-    ))]
-    AbsPathFromDockDirFailed{source: NewAbsPathError, dock_dir: PathBuf},
-    #[snafu(display(
         "Couldn't prepare arguments for `docker run`: {}",
         source,
     ))]
@@ -203,7 +193,7 @@ impl<T> OptionResultExt<T> for Option<T> {
 }
 
 fn find_and_parse_dock_config(dock_file_name: &str)
-    -> Result<(PathBuf, DockConfig), FindAndParseDockConfigError>
+    -> Result<(AbsPath, DockConfig), FindAndParseDockConfigError>
 {
     let cwd = env::current_dir()
         .context(GetCurrentDirFailed)?;
@@ -214,6 +204,9 @@ fn find_and_parse_dock_config(dock_file_name: &str)
 
     let conf = parse_dock_config(conf_reader)
         .context(ParseDockConfigFailed)?;
+
+    let dock_dir = path::abs_path_from_path_buf(&dock_dir)
+        .context(AbsPathFromDockDirFailed{dock_dir})?;
 
     Ok((dock_dir, conf))
 }
@@ -228,6 +221,13 @@ pub enum FindAndParseDockConfigError {
     OpenDockFileFailed{source: FindAndOpenFileError},
     #[snafu(display("Couldn't parse: {}", source))]
     ParseDockConfigFailed{source: ParseDockConfigError},
+    #[snafu(display(
+        "Couldn't get path to current Dock directory ('{}') as an absolute \
+            path: {}",
+        dock_dir.display(),
+        source,
+    ))]
+    AbsPathFromDockDirFailed{source: NewAbsPathError, dock_dir: PathBuf},
 }
 
 fn parse_dock_config(file: File) -> Result<DockConfig, ParseDockConfigError> {
