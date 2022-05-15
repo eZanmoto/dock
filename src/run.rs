@@ -96,30 +96,17 @@ pub fn run(
             .and_maybe_then(|path| path::rel_path_from_path_buf(path))
             .context(RelPathFromContextPathFailed)?;
 
-    rebuild_for_run(
-        dock_dir.clone(),
-        env_name,
-        &env_context,
-        &target_img,
-    )
+    rebuild_for_run(dock_dir.clone(), env_name, &env_context, &target_img)
         .context(RebuildForRunFailed)?;
 
-    let vol_name_prefix = format!(
-        "{}.{}.{}",
-        conf.organisation,
-        conf.project,
-        env_name,
-    );
+    let vol_name_prefix =
+        format!("{}.{}.{}", conf.organisation, conf.project, env_name);
 
     let mut run_args = to_strings(&["run"]);
 
-    let main_run_args = prepare_run_args(
-        env,
-        &dock_dir,
-        &vol_name_prefix,
-        &target_img,
-    )
-        .context(PrepareRunArgsFailed)?;
+    let main_run_args =
+        prepare_run_args(env, &dock_dir, &vol_name_prefix, &target_img)
+            .context(PrepareRunArgsFailed)?;
 
     run_args.extend(main_run_args);
 
@@ -278,11 +265,9 @@ fn rebuild_for_run(
     let Output{status, stdout, stderr} = output;
 
     if !status.success() {
-        return Err(RebuildForRunError::RebuildFailed{
-            stdout,
-            stderr,
-            img: img.to_string(),
-        });
+        let img = img.to_string();
+
+        return Err(RebuildForRunError::RebuildFailed{stdout, stderr, img});
     }
 
     // We ignore the status code returned "by the build step" because there
@@ -729,11 +714,9 @@ fn prepare_run_mount_args(
     let mut args = vec![];
 
     for (host_path, inner_path) in &hostpath_cli_args {
-        let mount_spec = format!(
-            "type=bind,src={},dst={}",
-            host_path,
-            inner_path,
-        );
+        let mount_spec =
+            format!("type=bind,src={},dst={}", host_path, inner_path);
+
         args.push(format!("--mount={}", mount_spec));
     }
 
@@ -743,11 +726,9 @@ fn prepare_run_mount_args(
         .collect::<Vec<String>>()
         .join(":");
 
-    args.push(format!(
-        "--env={}={}",
-        DOCK_HOSTPATHS_VAR_NAME,
-        rendered_hostpaths,
-    ));
+    args.push(
+        format!("--env={}={}", DOCK_HOSTPATHS_VAR_NAME, rendered_hostpaths)
+    );
 
     Ok(args)
 }
@@ -758,25 +739,18 @@ pub enum PrepareRunMountArgsError {
         "No route to the path '{}' was found on the host",
         path::abs_path_display_lossy(attempted_path),
     ))]
-    NoPathRouteOnHost{
-        attempted_path: AbsPath,
-    },
+    NoPathRouteOnHost{attempted_path: AbsPath},
     #[snafu(display(
         "Couldn't render the hostpath mapping to '{}' (lossy rendering: '{}')",
         inner_path.display(),
         path::abs_path_display_lossy(path),
     ))]
-    RenderHostPathFailed{
-        path: AbsPath,
-        inner_path: PathBuf,
-    },
+    RenderHostPathFailed{path: AbsPath, inner_path: PathBuf},
     #[snafu(display(
         "Couldn't render the inner path '{}' as a CLI argument",
         PathBuf::from(path).display(),
     ))]
-    InnerPathAsCliArgFailed{
-        path: OsString,
-    },
+    InnerPathAsCliArgFailed{path: OsString},
 }
 
 const DOCK_HOSTPATHS_VAR_NAME: &str = "DOCK_HOSTPATHS";
