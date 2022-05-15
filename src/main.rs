@@ -27,8 +27,8 @@ mod rebuild;
 mod run;
 mod trie;
 
-use run::RunWithExtraPrefixArgsError;
 use run::RebuildForRunError;
+use run::RunError;
 
 const TAGGED_IMG_FLAG: &str = "tagged-image";
 const DOCKER_ARGS_FLAG: &str = "docker-args";
@@ -182,13 +182,13 @@ fn index_of_first_unsupported_flag(args: &[&str]) -> Option<usize> {
 }
 
 fn run(dock_file_name: &str, args: &ArgMatches) -> i32 {
-    handle_run_with_extra_prefix_args(dock_file_name, args, vec![])
+    handle_run(dock_file_name, args, &[])
 }
 
-fn handle_run_with_extra_prefix_args(
+fn handle_run(
     dock_file_name: &str,
     args: &ArgMatches,
-    extra_prefix_args: Vec<String>,
+    extra_prefix_args: &[&str],
 ) -> i32 {
     // TODO Make this variable required.
     let env_name = args.value_of(ENV_FLAG).unwrap();
@@ -199,7 +199,7 @@ fn handle_run_with_extra_prefix_args(
             None => vec![],
         };
 
-    let result = run::run_with_extra_prefix_args(
+    let result = run::run(
         dock_file_name,
         env_name,
         extra_prefix_args,
@@ -211,7 +211,7 @@ fn handle_run_with_extra_prefix_args(
         },
         Err(e) => {
             match e {
-                RunWithExtraPrefixArgsError::RebuildForRunFailed{
+                RunError::RebuildForRunFailed{
                     source: RebuildForRunError::RebuildFailed{
                         stdout,
                         stderr,
@@ -243,13 +243,13 @@ fn handle_run_with_extra_prefix_args(
 }
 
 fn shell(dock_file_name: &str, args: &ArgMatches) -> i32 {
-    handle_run_with_extra_prefix_args(
+    handle_run(
         dock_file_name,
         args,
-        run::to_strings(&[
+        &[
             "--interactive",
             "--tty",
             "--entrypoint=/bin/sh",
-        ]),
+        ],
     )
 }

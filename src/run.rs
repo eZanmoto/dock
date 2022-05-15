@@ -74,12 +74,12 @@ enum DockEnvironmentMountLocalConfig {
     Docker,
 }
 
-pub fn run_with_extra_prefix_args(
+pub fn run(
     dock_file_name: &str,
     env_name: &str,
-    extra_prefix_args: Vec<String>,
-    extra_run_args: &[&str],
-) -> Result<ExitStatus, RunWithExtraPrefixArgsError> {
+    flags: &[&str],
+    cmd_args: &[&str],
+) -> Result<ExitStatus, RunError> {
     let (dock_dir, conf) = find_and_parse_dock_config(dock_file_name)
         .context(FindAndParseDockConfigFailed{dock_file_name})?;
 
@@ -95,8 +95,11 @@ pub fn run_with_extra_prefix_args(
             .and_maybe_then(|path| path::rel_path_from_path_buf(path))
             .context(RelPathFromContextPathFailed)?;
 
+    let dock_dir = path::abs_path_from_path_buf(&dock_dir)
+        .context(AbsPathFromDockDirFailed{dock_dir})?;
+
     rebuild_for_run(
-        &dock_dir,
+        dock_dir.clone(),
         env_name,
         &env_context,
         &target_img,
@@ -110,12 +113,7 @@ pub fn run_with_extra_prefix_args(
         env_name,
     );
 
-    let dock_dir = path::abs_path_from_path_buf(&dock_dir)
-        .context(AbsPathFromDockDirFailed{dock_dir})?;
-
     let mut run_args = to_strings(&["run"]);
-
-    run_args.extend(extra_prefix_args);
 
     let main_run_args = prepare_run_args(
         env,
@@ -127,9 +125,11 @@ pub fn run_with_extra_prefix_args(
 
     run_args.extend(main_run_args);
 
+    run_args.extend(to_strings(flags));
+
     run_args.push(target_img);
 
-    run_args.extend(to_strings(extra_run_args));
+    run_args.extend(to_strings(cmd_args));
 
     // TODO Perform the side effects of `prepare_run_cache_volumes_args` here.
 
@@ -143,7 +143,7 @@ pub fn run_with_extra_prefix_args(
 // field because it's passed to the `run_with_extra_prefix_args`, but we
 // include it for now for simplicity.
 #[derive(Debug, Snafu)]
-pub enum RunWithExtraPrefixArgsError {
+pub enum RunError {
     #[snafu(display("Couldn't find and parse '': {}", source))]
     FindAndParseDockConfigFailed{
         source: FindAndParseDockConfigError,
@@ -267,14 +267,14 @@ pub enum ParseDockConfigError {
 }
 
 fn rebuild_for_run(
-    dock_dir: &Path,
+    dock_dir: AbsPath,
     env_name: &str,
     maybe_context_sub_path: &Option<RelPath>,
     img: &str,
 )
     -> Result<(), RebuildForRunError>
 {
-    let mut dockerfile_path = dock_dir.to_path_buf();
+    let mut dockerfile_path = path::abs_path_to_path_buf(dock_dir.clone());
     dockerfile_path.push(format!("{}.Dockerfile", env_name));
 
     let docker_rebuild_input_result = new_docker_rebuild_input(
@@ -327,18 +327,21 @@ pub enum RebuildForRunError {
 }
 
 fn new_docker_rebuild_input(
-    dock_dir: &Path,
+    dock_dir: AbsPath,
     dockerfile_path: &Path,
     maybe_context_sub_path: &Option<RelPath>,
 )
     -> Result<DockerRebuildInput, NewDockerRebuildInputError>
 {
     if let Some(context_sub_path) = maybe_context_sub_path {
-        let mut context_path = dock_dir.to_path_buf();
-        path::path_buf_extend(&mut context_path, context_sub_path);
+        let mut context_path = dock_dir;
+        path::abs_path_extend(&mut context_path, context_sub_path.clone());
 
-        let context_path_cli_arg = context_path.to_str()
-            .context(InvalidUtf8InContextPath{path: context_path.clone()})?;
+        let context_path_path_buf =
+            path::abs_path_to_path_buf(context_path.clone());
+
+        let context_path_cli_arg = context_path_path_buf.to_str()
+                .context(InvalidUtf8InContextPath{path: context_path})?;
 
         let dockerfile_path_cli_arg = dockerfile_path.to_str()
             .context(InvalidUtf8InDockerfilePath{
@@ -372,9 +375,9 @@ struct DockerRebuildInput {
 pub enum NewDockerRebuildInputError {
     #[snafu(display(
         "The path to the Docker context ('{}') contained invalid UTF-8",
-        path.display(),
+        path::abs_path_display_lossy(path),
     ))]
-    InvalidUtf8InContextPath{path: PathBuf},
+    InvalidUtf8InContextPath{path: AbsPath},
     #[snafu(display(
         "The path to the Dockerfile ('{}') contained invalid UTF-8",
         path.display(),
@@ -648,7 +651,7 @@ pub enum PrepareRunMountLocalArgsError {
     WorkdirNotSet,
 }
 
-pub fn to_strings(strs: &[&str]) -> Vec<String> {
+fn to_strings(strs: &[&str]) -> Vec<String> {
     strs
         .iter()
         .map(ToString::to_string)

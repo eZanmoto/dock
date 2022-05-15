@@ -12,6 +12,7 @@
 use std::char;
 use std::ffi::OsString;
 use std::fmt::Debug;
+use std::iter::FromIterator;
 use std::path;
 use std::path::Component;
 use std::path::Path;
@@ -107,6 +108,14 @@ pub fn abs_path_extend(abs_path: &mut AbsPath, rel_path: RelPath) {
     abs_path.extend(rel_path);
 }
 
+pub fn abs_path_to_path_buf(abs_path: AbsPath) -> PathBuf {
+    let mut p = PathBuf::new();
+    p.push(Component::RootDir);
+    p.push(PathBuf::from_iter(abs_path));
+
+    p
+}
+
 pub type AbsPathRef<'a> = &'a [OsString];
 
 pub type RelPath = Vec<OsString>;
@@ -147,12 +156,4 @@ pub enum NewRelPathError {
         "The relative path contained a special component, such as `.` or `..`"
     ))]
     SpecialComponentInRelPath,
-}
-
-pub type RelPathRef<'a> = &'a [OsString];
-
-pub fn path_buf_extend(path_buf: &mut PathBuf, rel_path: RelPathRef) {
-    for component in rel_path {
-        path_buf.push(component);
-    }
 }
