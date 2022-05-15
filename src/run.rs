@@ -2,7 +2,6 @@
 // Use of this source code is governed by an MIT
 // licence that can be found in the LICENCE file.
 
-use std::char;
 use std::collections::HashMap;
 use std::env;
 use std::env::VarError;
@@ -13,8 +12,6 @@ use std::fs as std_fs;
 use std::fs::File;
 use std::io::Error as IoError;
 use std::os::unix::fs::MetadataExt;
-use std::path;
-use std::path::Component;
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
@@ -35,6 +32,12 @@ use docker::AssertRunError as DockerAssertRunError;
 use docker::StreamRunError;
 use fs;
 use fs::FindAndOpenFileError;
+use path;
+use path::AbsPath;
+use path::AbsPathRef;
+use path::NewAbsPathError;
+use path::NewRelPathError;
+use path::RelPath;
 use rebuild;
 use rebuild::RebuildError;
 use rebuild::RebuildWithCapturedOutputError;
@@ -94,7 +97,7 @@ pub fn run_with_extra_prefix_args(
 
     let env_context =
         if let Some(path) = &env.context {
-            let p = rel_path_from_path_buf(path)
+            let p = path::rel_path_from_path_buf(path)
                 .context(RelPathFromContextPathFailed)?;
 
             Some(p)
@@ -112,7 +115,7 @@ pub fn run_with_extra_prefix_args(
 
     let proj = Project{org: conf.organisation, name: conf.project};
 
-    let dock_dir = abs_path_from_path_buf(&dock_dir)
+    let dock_dir = path::abs_path_from_path_buf(&dock_dir)
         .context(AbsPathFromDockDirFailed{dock_dir})?;
 
     let run_args = prepare_run_args(
@@ -306,7 +309,7 @@ fn new_docker_rebuild_input(
 {
     if let Some(context_sub_path) = maybe_context_sub_path {
         let mut context_path = dock_dir.to_path_buf();
-        path_buf_extend(&mut context_path, context_sub_path);
+        path::path_buf_extend(&mut context_path, context_sub_path);
 
         let context_path_cli_arg = context_path.to_str()
             .context(InvalidUtf8InContextPath{path: context_path.clone()})?;
@@ -418,7 +421,7 @@ fn prepare_run_args(
     if let Some(mounts) = &env.mounts {
         let mut parsed_mounts = vec![];
         for (rel_outer_path, inner_path) in mounts.iter() {
-            let rel_outer_path = rel_path_from_path_buf(rel_outer_path)
+            let rel_outer_path = path::rel_path_from_path_buf(rel_outer_path)
                 .context(ParseConfigOuterPathFailed{
                     rel_outer_path,
                     inner_path,
@@ -491,10 +494,10 @@ fn prepare_run_cache_volumes_args(
     let mut args = vec![];
 
     for (name, path) in cache_volumes.iter() {
-        let path_abs_path = abs_path_from_path_buf(path)
+        let path_abs_path = path::abs_path_from_path_buf(path)
             .context(CacheVolDirAsAbsPathFailed)?;
 
-        let path_cli_arg = abs_path_display(&path_abs_path)
+        let path_cli_arg = path::abs_path_display(&path_abs_path)
             .context(RenderCacheVolDirFailed{dir: path_abs_path})?;
 
         let vol_name = format!(
@@ -542,7 +545,7 @@ pub enum PrepareRunCacheVolumesArgsError {
     CacheVolDirAsAbsPathFailed{source: NewAbsPathError},
     #[snafu(display(
         "Couldn't render the cache volume directory (lossy rendering: '{}')",
-        abs_path_display_lossy(dir),
+        path::abs_path_display_lossy(dir),
     ))]
     RenderCacheVolDirFailed{dir: AbsPath},
     #[snafu(display("Couldn't set the ownership of the cache: {}", source))]
@@ -597,7 +600,7 @@ fn prepare_run_mount_local_args(
         let proj_dir_host_path = apply_hostpath(cur_hostpaths, dock_dir)
             .context(NoProjectPathRouteOnHost{attempted_path: dock_dir})?;
 
-        let proj_dir_cli_arg = abs_path_display(&proj_dir_host_path)
+        let proj_dir_cli_arg = path::abs_path_display(&proj_dir_host_path)
             .context(RenderProjectDirFailed{dir: proj_dir_host_path})?;
 
         let workdir = workdir.as_ref()
@@ -624,12 +627,12 @@ pub enum PrepareRunMountLocalArgsError {
     GetDockerSockMetadataFailed{source: IoError},
     #[snafu(display(
         "No route to the project path '{}' was found on the host",
-        abs_path_display_lossy(attempted_path),
+        path::abs_path_display_lossy(attempted_path),
     ))]
     NoProjectPathRouteOnHost{attempted_path: AbsPath},
     #[snafu(display(
         "Couldn't render the project directory (lossy rendering: '{}')",
-        abs_path_display_lossy(dir),
+        path::abs_path_display_lossy(dir),
     ))]
     RenderProjectDirFailed{dir: AbsPath},
     #[snafu(display("`workdir` is required when `project_dir` is mounted"))]
@@ -700,7 +703,7 @@ fn prepare_run_mount_args(
     let mut hostpath_cli_args = vec![];
     for (rel_outer_path, inner_path) in mounts {
         let mut path = dock_dir.to_owned();
-        abs_path_extend(&mut path, rel_outer_path.clone());
+        path::abs_path_extend(&mut path, rel_outer_path.clone());
 
         // TODO Add `cur_hostpaths` to the error context. This ideally requires
         // `&Trie` to implement `Clone` so that a new, owned copy of
@@ -708,7 +711,7 @@ fn prepare_run_mount_args(
         path = apply_hostpath(cur_hostpaths, &path)
             .context(NoPathRouteOnHost{attempted_path: path})?;
 
-        let host_path_cli_arg = abs_path_display(&path)
+        let host_path_cli_arg = path::abs_path_display(&path)
             .context(RenderHostPathFailed{
                 path,
                 inner_path: (*inner_path).clone(),
@@ -762,7 +765,7 @@ fn prepare_run_mount_args(
 pub enum PrepareRunMountArgsError {
     #[snafu(display(
         "No route to the path '{}' was found on the host",
-        abs_path_display_lossy(attempted_path),
+        path::abs_path_display_lossy(attempted_path),
     ))]
     NoPathRouteOnHost{
         attempted_path: AbsPath,
@@ -770,7 +773,7 @@ pub enum PrepareRunMountArgsError {
     #[snafu(display(
         "Couldn't render the hostpath mapping to '{}' (lossy rendering: '{}')",
         inner_path.display(),
-        abs_path_display_lossy(path),
+        path::abs_path_display_lossy(path),
     ))]
     RenderHostPathFailed{
         path: AbsPath,
@@ -814,13 +817,13 @@ fn hostpaths() -> Result<Option<Hostpaths>, HostpathsError> {
     let mut hostpaths = Trie::new();
     for pair in raw_hostpaths.chunks(2) {
         if let [outer_path, inner_path] = pair {
-            let abs_outer_path = parse_abs_path(outer_path)
+            let abs_outer_path = path::parse_abs_path(outer_path)
                 .context(ParseOuterPathFailed{
                     outer_path: (*outer_path).to_string(),
                     inner_path: (*inner_path).to_string(),
                 })?;
 
-            let abs_inner_path = parse_abs_path(inner_path)
+            let abs_inner_path = path::parse_abs_path(inner_path)
                 .context(ParseInnerPathFailed{
                     outer_path: (*outer_path).to_string(),
                     inner_path: (*inner_path).to_string(),
@@ -932,140 +935,4 @@ fn apply_hostpath(maybe_hostpaths: &Option<Hostpaths>, path: AbsPathRef)
     host_path.extend(rel_path);
 
     Some(host_path)
-}
-
-type AbsPath = Vec<OsString>;
-
-/// Returns the `AbsPath` parsed from `p`. `p` must begin with a "root
-/// directory" component.
-fn parse_abs_path(p: &str) -> Result<AbsPath, NewAbsPathError> {
-    abs_path_from_path_buf(Path::new(p))
-}
-
-#[derive(Debug, Snafu)]
-pub enum NewAbsPathError {
-    #[snafu(display("The absolute path was empty"))]
-    EmptyAbsPath,
-    // TODO We would ideally add the path component as a field on
-    // `NoRootDirPrefix` and `SpecialComponentInAbsPath` to track the component
-    // that was unexpected. However, the current version of `Snafu` being used
-    // ["cannot use lifetime-parameterized errors as
-    // sources"](https://github.com/shepmaster/snafu/issues/99), so we omit
-    // this field for now.
-    #[snafu(display("The absolute path didn't start with `/`"))]
-    NoRootDirPrefix,
-    #[snafu(display(
-        "The absolute path contained a special component, such as `.` or `..`"
-    ))]
-    SpecialComponentInAbsPath,
-}
-
-fn abs_path_from_path_buf(p: &Path) -> Result<AbsPath, NewAbsPathError> {
-    let mut components = p.components();
-
-    let component = components.next()
-        .context(EmptyAbsPath)?;
-
-    if component != Component::RootDir {
-        return Err(NewAbsPathError::NoRootDirPrefix);
-    }
-
-    let mut abs_path = vec![];
-    for component in components {
-        if let Component::Normal(c) = component {
-            abs_path.push(c.to_os_string());
-        } else {
-            return Err(NewAbsPathError::SpecialComponentInAbsPath);
-        }
-    }
-
-    Ok(abs_path)
-}
-
-// TODO `abs_path_display` should ideally return an error instead of `None` if
-// there is a problem rendering a component of the path.
-fn abs_path_display(abs_path: AbsPathRef) -> Option<String> {
-    if abs_path.is_empty() {
-        return Some(path::MAIN_SEPARATOR.to_string());
-    }
-
-    let mut string = String::new();
-    for component in abs_path {
-        string += &path::MAIN_SEPARATOR.to_string();
-        string += component.to_str()?;
-    }
-
-    Some(string)
-}
-
-fn abs_path_display_lossy(abs_path: AbsPathRef) -> String {
-    if abs_path.is_empty() {
-        return path::MAIN_SEPARATOR.to_string();
-    }
-
-    let mut string = String::new();
-    for component in abs_path {
-        string += &path::MAIN_SEPARATOR.to_string();
-        if let Some(s) = component.to_str() {
-            string += s;
-        } else {
-            string += &char::REPLACEMENT_CHARACTER.to_string();
-        }
-    }
-
-    string
-}
-
-fn abs_path_extend(abs_path: &mut AbsPath, rel_path: RelPath) {
-    abs_path.extend(rel_path);
-}
-
-type AbsPathRef<'a> = &'a [OsString];
-
-type RelPath = Vec<OsString>;
-
-/// Returns the `RelPath` derived from `p`. `p` must begin with a "current
-/// directory" component (i.e. `.`).
-fn rel_path_from_path_buf(p: &Path) -> Result<RelPath, NewRelPathError> {
-    let mut components = p.components();
-
-    let component = components.next()
-        .context(EmptyRelPath)?;
-
-    if component != Component::CurDir {
-        return Err(NewRelPathError::NoCurDirPrefix);
-    }
-
-    let mut rel_path = vec![];
-    for component in components {
-        if let Component::Normal(c) = component {
-            rel_path.push(c.to_os_string());
-        } else {
-            return Err(NewRelPathError::SpecialComponentInRelPath);
-        }
-    }
-
-    Ok(rel_path)
-}
-
-#[derive(Debug, Snafu)]
-pub enum NewRelPathError {
-    #[snafu(display("The relative path was empty"))]
-    EmptyRelPath,
-    // TODO See `NewAbsPathError` for more details on adding `Component` fields
-    // in error variants.
-    #[snafu(display("The relative path didn't start with `.`"))]
-    NoCurDirPrefix,
-    #[snafu(display(
-        "The relative path contained a special component, such as `.` or `..`"
-    ))]
-    SpecialComponentInRelPath,
-}
-
-type RelPathRef<'a> = &'a [OsString];
-
-fn path_buf_extend(path_buf: &mut PathBuf, rel_path: RelPathRef) {
-    for component in rel_path {
-        path_buf.push(component);
-    }
 }
