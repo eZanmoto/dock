@@ -118,10 +118,10 @@ pub fn run_with_extra_prefix_args(
     run_args.extend(extra_prefix_args);
 
     let main_run_args = prepare_run_args(
-        &vol_name_prefix,
         env,
-        &target_img,
         &dock_dir,
+        &vol_name_prefix,
+        &target_img,
     )
         .context(PrepareRunArgsFailed)?;
 
@@ -389,10 +389,10 @@ pub enum NewDockerRebuildInputError {
 }
 
 fn prepare_run_args(
-    vol_name_prefix: &str,
     env: &DockEnvironmentConfig,
-    target_img: &str,
     dock_dir: AbsPathRef,
+    vol_name_prefix: &str,
+    target_img: &str,
 )
     -> Result<Vec<String>, PrepareRunArgsError>
 {
