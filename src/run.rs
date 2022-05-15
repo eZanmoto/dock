@@ -32,6 +32,7 @@ use docker::AssertRunError as DockerAssertRunError;
 use docker::StreamRunError;
 use fs;
 use fs::FindAndOpenFileError;
+use option::OptionResultExt;
 use path;
 use path::AbsPath;
 use path::AbsPathRef;
@@ -168,28 +169,6 @@ fn tagged_image_name(org: &str, proj: &str, env_name: &str) -> String {
     let img_name = format!("{}/{}.{}", org, proj, env_name);
 
     format!("{}:latest", img_name)
-}
-
-trait OptionResultExt<T> {
-    fn and_maybe_then<U, F, E>(self, f: F) -> Result<Option<U>, E>
-    where
-        F: FnOnce(T) -> Result<U, E>;
-}
-
-impl<T> OptionResultExt<T> for Option<T> {
-    fn and_maybe_then<U, F, E>(self, f: F) -> Result<Option<U>, E>
-    where
-        F: FnOnce(T) -> Result<U, E>,
-    {
-        if let Some(value) = self {
-            match f(value) {
-                Ok(v) => Ok(Some(v)),
-                Err(e) => Err(e),
-            }
-        } else {
-            Ok(None)
-        }
-    }
 }
 
 fn find_and_parse_dock_config(dock_file_name: &str)

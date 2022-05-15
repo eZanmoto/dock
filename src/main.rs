@@ -22,6 +22,7 @@ use clap::SubCommand;
 
 mod docker;
 mod fs;
+mod option;
 mod path;
 mod rebuild;
 mod run;
