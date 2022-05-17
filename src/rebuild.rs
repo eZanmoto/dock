@@ -34,7 +34,7 @@ pub fn rebuild_with_streaming_output(target_img: &str, args: Vec<&str>)
     )
 }
 
-fn rebuild_img<F, V, E>(target_img: &str, args: Vec<&str>, run_docker: F)
+fn rebuild_img<F, V, E>(target_img: &str, args: Vec<&str>, build_img: F)
     -> Result<V, RebuildError<V, E>>
 where
     F: FnOnce(Vec<&str>) -> Result<(V, bool), E>,
@@ -64,7 +64,7 @@ where
 
     build_args.extend(args);
 
-    let (build_result, build_success) = run_docker(build_args)
+    let (build_result, build_success) = build_img(build_args)
         .context(BuildNewImageFailed)?;
 
     let img_ids = docker::get_image_ids(target_img)
