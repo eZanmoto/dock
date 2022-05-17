@@ -13,10 +13,10 @@ use clap::Arg;
 use clap::ArgMatches;
 use clap::Command;
 
+mod canon_path;
 mod docker;
 mod fs;
 mod option;
-mod canon_path;
 mod rebuild;
 mod run;
 mod trie;
