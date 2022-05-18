@@ -207,10 +207,10 @@ environment by running the following:
 
 ### Building
 
-The project can be built locally using `cargo build`, or can be built using
+The project can be built locally using `cargo build --locked`, or can be built using
 Docker by running the following:
 
-    bash scripts/with_build_env.sh cargo build
+    bash scripts/with_build_env.sh cargo build --locked
 
 ### Testing
 

@@ -37,6 +37,7 @@ check_intg: clean_images $(tgt_test_dir)
 		TEST_ORG='$(test_org)' \
 		TEST_PROJ='$(test_proj).test' \
 		cargo test \
+			--locked \
 			-- \
 			--nocapture \
 			--show-output \
@@ -54,6 +55,7 @@ check_lint:
 		TEST_ORG='$(test_org)' \
 		TEST_PROJ='$(test_proj).test' \
 		cargo clippy \
+			--locked \
 			--all-targets \
 			--all-features \
 			-- \
