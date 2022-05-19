@@ -214,13 +214,13 @@ Docker by running the following:
 
 ### Testing
 
-The project can be tested locally using `make check`, or the tests can be run
+The project can be tested locally using `just check`, or the tests can be run
 using Docker by running the following:
 
-    bash scripts/with_build_env.sh make check
+    bash scripts/with_build_env.sh just check
 
-A subset of integration tests can be run by passing `TESTS` to Make:
+A subset of integration tests can be run by passing name patterns to `just`:
 
-    make check_intg TESTS=add
+    just check add
 
-The command above will run all integration tests whose name contains "add".
+The commands above will run all integration tests whose name contains "add".

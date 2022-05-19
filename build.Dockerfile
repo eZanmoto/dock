@@ -17,3 +17,23 @@ RUN \
             https://get.docker.com \
         | VERSION=19.03.8 \
             sh
+
+RUN \
+    mkdir \
+            '/tmp/just' \
+        && curl \
+            --fail \
+            --show-error \
+            --silent \
+            --location \
+            --proto '=https' \
+            --tlsv1.2 \
+            'https://github.com/casey/just/releases/download/1.1.3/just-1.1.3-x86_64-unknown-linux-musl.tar.gz' \
+        | tar \
+            --extract \
+            --gzip \
+            --directory='/tmp/just' \
+        && install \
+            --mode 755 \
+            '/tmp/just/just' \
+            '/usr/local/bin'
