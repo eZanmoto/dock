@@ -8,7 +8,7 @@ About
 environments.
 
 An example of this is to define a Docker container to use as a build
-environment. When implemented, `dock env build <command>` can be used to run
+environment. When implemented, `dock run build <command>` can be used to run
 `command` in the context of a build environment defined as a Docker container,
 but with quality-of-life shortcuts such as easy mounting of the local project
 and using the local user's ID within the container in order to speed up the
@@ -48,7 +48,7 @@ remove intermediate containers regardless of the build result.
 
 `dock run` runs a shell command in a Docker "environment". For example, consider
 the following definition of a project whose build environment is defined in a
-separate `build.Dockerfile`, and which also has the following `dock.yaml:
+separate `build.Dockerfile`, and which also has the following `dock.yaml`:
 
 ``` yaml
 schema_version: '0.1'
@@ -91,11 +91,11 @@ environments:
     env:
       PROXY_FORWARDING: true
 
-    enabled:
-    - local_user
-    - local_group
-    - nested_docker
+    mount_local:
+    - user
+    - group
     - project_dir
+    - docker
 
     cache_volumes:
       tmp: /tmp/cache
@@ -115,20 +115,20 @@ environments:
   same order.
 * `env`: These environment variable definitions are exported inside the Docker
   container.
-* `nested_docker`: This mounts the default local Docker socket file inside the
-  container and, inside the container, adds the user to the owner group for the
-  socket file.
-* `local_user`: This performs "local user mapping", so that the command run
-  inside the container is run with the user ID of the user running `dock`. Note
-  that this ID is discovered using the `id` program, and so, a failure may occur
-  if the `id` program isn't found.
-* `local_group`: This is similar to `local_user`, but uses the local user's
-  group ID instead of their user ID. It requires that `local_user` is also
-  enabled.
-* `project_dir`: This mounts the local project directory, i.e. the directory
-  that `dock.yaml` is defined in, to the `workdir` path inside the container.
-  This also works in "nested" Docker scenarios, as described in the "`mounts`"
-  section, below.
+* `mount_local.user`: This performs "local user mapping", so that the command
+  run inside the container is run with the user ID of the user running `dock`.
+  Note that this ID is discovered using the `id` program, and so, a failure may
+  occur if the `id` program isn't found.
+* `mount_local.group`: This is similar to `mount_local.user`, but uses the local
+  user's group ID instead of their user ID. It requires that `mount_local.user`
+  is also specified.
+* `mount_local.project_dir`: This mounts the local project directory, i.e. the
+  directory that `dock.yaml` is defined in, to the `workdir` path inside the
+  container. This also works in "nested" Docker scenarios, as described in the
+  "`mounts`" section, below.
+* `mount_local.docker`: This mounts the default local Docker socket file inside
+  the container and, inside the container, adds the user to the owner group for
+  the host socket file.
 * `cache_volumes`: This creates a new volume at the given path, but recursively
   changes the permissions of the path to have open (`0777`) permissions. See the
   "`cache_volumes`" section, below, for more details.
@@ -191,7 +191,8 @@ this scenario.
 `dock shell` has the same behaviour as `dock run`, but instead of running a
 single command, spawns a new shell in the Docker "environment". If a `dock.yaml`
 file contains an environment called `build`, then `dock shell build` will start
-a new shell in that environment.
+a new shell in that environment. `dock shell` on its own will start a shell in
+the `default_shell_env`.
 
 Development
 -----------
