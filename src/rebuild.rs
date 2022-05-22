@@ -5,7 +5,6 @@
 use std::error::Error;
 use std::fmt::Debug;
 use std::fs::File;
-use std::io;
 use std::io::Error as IoError;
 use std::process::Command;
 use std::process::ExitStatus;
@@ -148,35 +147,19 @@ pub fn rebuild_with_captured_output(
         target_img,
         args,
         |build_args| {
-            let stdin_behaviour =
-                if dockerfile.is_some() {
-                    Stdio::piped()
-                } else {
-                    Stdio::null()
-                };
+            let mut stdin = Stdio::null();
+            if let Some(f) = dockerfile {
+                stdin = Stdio::from(f);
+            }
 
-            let mut docker_proc =
+            let docker_proc =
                 Command::new("docker")
                     .args(build_args)
                     .stdout(Stdio::piped())
                     .stderr(Stdio::piped())
-                    .stdin(stdin_behaviour)
+                    .stdin(stdin)
                     .spawn()
                     .context(PipedSpawnFailed)?;
-
-            if let Some(mut dockerfile) = dockerfile {
-                // TODO `docker_proc.wait_with_output()` blocks if this block
-                // doesn't surround the usage of `stdin`. This is likely due to
-                // `stdin.take()` causing the child to be blocked on input,
-                // which the new block explicitly drops, though this behaviour
-                // should be confirmed and documented when time allows.
-
-                let mut stdin = docker_proc.stdin.take()
-                    .expect("`docker` process didn't contain a `stdin` pipe");
-
-                io::copy(&mut dockerfile, &mut stdin)
-                    .context(PipeDockerfileFailed)?;
-            }
 
             let build_result = docker_proc.wait_with_output()
                 .context(PipedWaitFailed)?;
