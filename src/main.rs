@@ -14,13 +14,17 @@ use clap::ArgMatches;
 use clap::Command;
 
 mod canon_path;
+mod cmd_loggers;
 mod docker;
 mod fs;
+mod logging_process;
 mod option;
 mod rebuild;
 mod run;
 mod trie;
 
+use cmd_loggers::CapturingCmdLogger;
+use cmd_loggers::Stream;
 use run::RebuildForRunError;
 use run::RunError;
 
@@ -185,9 +189,21 @@ fn handle_run(
     flags: &[&str],
     cmd_args: &[&str],
 ) -> i32 {
-    let env_name = args.and_then(|a| a.value_of(ENV_FLAG));
+    let mut logger = CapturingCmdLogger::new();
 
-    let result = run::run(dock_file_name, env_name, flags, cmd_args);
+    let mut env_name = None;
+    if let Some(args) = args {
+        env_name = args.value_of(ENV_FLAG);
+    }
+
+    let result = run::run(
+        &mut logger,
+        dock_file_name,
+        env_name,
+        flags,
+        cmd_args,
+    );
+
     match result {
         Ok(exit_status) => {
             exit_code_from_exit_status(exit_status)
@@ -195,25 +211,9 @@ fn handle_run(
         Err(e) => {
             match e {
                 RunError::RebuildForRunFailed{
-                    source: RebuildForRunError::RebuildFailed{
-                        stdout,
-                        stderr,
-                        ..
-                    },
+                    source: RebuildForRunError::RebuildUnsuccessful{..},
                 } => {
-                    let result = io::stdout()
-                        .lock()
-                        .write_all(&stdout);
-                    if let Err(e) = result {
-                        eprintln!("couldn't write captured STDOUT: {}", e);
-                    }
-
-                    let result = io::stderr()
-                        .lock()
-                        .write_all(&stderr);
-                    if let Err(e) = result {
-                        eprintln!("couldn't write captured STDERR: {}", e);
-                    }
+                    write_streams(logger.streams);
                 },
                 _ => {
                     eprintln!("{}", e);
@@ -222,6 +222,35 @@ fn handle_run(
 
             1
         },
+    }
+}
+
+fn write_streams(streams: Vec<(Stream, Vec<u8>)>) {
+    let stdout = io::stdout();
+    let mut stdout = stdout.lock();
+
+    let stderr = io::stderr();
+    let mut stderr = stderr.lock();
+
+    for (stream, bs) in streams {
+        let out =
+            match stream {
+                Stream::Stdout => &mut stdout as &mut dyn Write,
+                Stream::Stderr => &mut stderr as &mut dyn Write,
+            };
+
+        if let Err(e) = out.write_all(&bs) {
+            eprintln!("couldn't write stream ({:?}): {}", stream, e);
+            return;
+        }
+    }
+
+    if let Err(e) = stdout.flush() {
+        eprintln!("couldn't flush STDOUT: {}", e);
+    }
+
+    if let Err(e) = stderr.flush() {
+        eprintln!("couldn't flush STDERR: {}", e);
     }
 }
 

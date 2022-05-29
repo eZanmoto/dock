@@ -3,14 +3,12 @@
 // licence that can be found in the LICENCE file.
 
 use std::error::Error;
+use std::ffi::OsStr;
 use std::ffi::OsString;
 use std::fmt::Debug;
 use std::fs::File;
-use std::io::Error as IoError;
 use std::path::PathBuf;
-use std::process::Command;
 use std::process::ExitStatus;
-use std::process::Output;
 use std::process::Stdio;
 
 use snafu::ResultExt;
@@ -21,6 +19,9 @@ use crate::docker;
 use crate::docker::AssertRunError;
 use crate::docker::GetImageIdsError;
 use crate::docker::StreamRunError;
+use crate::logging_process;
+use crate::logging_process::CommandLogger;
+use crate::logging_process::RunError;
 
 // TODO Take `args` as `&[&OsStr]`.
 pub fn rebuild_with_streaming_output(target_img: &str, args: &[&str])
@@ -153,8 +154,12 @@ pub enum DockerContext {
     Dir{path: AbsPath, dockerfile: AbsPath},
 }
 
-pub fn rebuild_with_captured_output(target_img: &str, context: DockerContext)
-    -> Result<Output, RebuildError<Output, RebuildWithCapturedOutputError>>
+pub fn rebuild(
+    logger: &mut dyn CommandLogger,
+    target_img: &str,
+    context: DockerContext,
+)
+    -> Result<ExitStatus, RebuildError<ExitStatus, RunError>>
 {
     let stdin;
     let args;
@@ -176,32 +181,22 @@ pub fn rebuild_with_captured_output(target_img: &str, context: DockerContext)
         target_img,
         args,
         |build_args| {
-            let docker_proc =
-                Command::new("docker")
-                    .args(build_args)
-                    .stdout(Stdio::piped())
-                    .stderr(Stdio::piped())
-                    .stdin(stdin)
-                    .spawn()
-                    .context(PipedSpawnFailed)?;
+            let build_args: Vec<&OsStr> =
+                build_args
+                    .iter()
+                    .map(OsStr::new)
+                    .collect();
 
-            let build_result = docker_proc.wait_with_output()
-                .context(PipedWaitFailed)?;
+            let build_result = logging_process::run(
+                logger,
+                OsStr::new("docker"),
+                &build_args,
+                stdin,
+            )?;
 
-            let success = build_result.status.success();
+            let success = build_result.success();
 
             Ok((build_result, success))
         },
     )
-}
-
-#[allow(clippy::enum_variant_names)]
-#[derive(Debug, Snafu)]
-pub enum RebuildWithCapturedOutputError {
-    #[snafu(display("Couldn't spawn `docker` with piped output: {}", source))]
-    PipedSpawnFailed{source: IoError},
-    #[snafu(display("Couldn't pipe Dockerfile to `docker` STDIN: {}", source))]
-    PipeDockerfileFailed{source: IoError},
-    #[snafu(display("Couldn't wait for `docker`: {}", source))]
-    PipedWaitFailed{source: IoError},
 }

@@ -16,9 +16,21 @@ edition = "2021"
 
 [dependencies]
 clap = "=3.1.18"
-serde = { version = "=1.0.133", features = ["derive"] }
 serde_yaml = "=0.8.1"
 snafu = "=0.6.9"
+
+[dependencies.serde]
+version = "=1.0.133"
+features = ["derive"]
+
+[dependencies.tokio]
+version = "=1.18.2"
+features = [
+    "io-util",
+    "macros",
+    "process",
+    "rt",
+]
 
 [dev-dependencies]
 assert_cmd = "=1.0.1"

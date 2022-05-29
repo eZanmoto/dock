@@ -36,11 +36,12 @@ use crate::docker::AssertRunError as DockerAssertRunError;
 use crate::docker::StreamRunError;
 use crate::fs;
 use crate::fs::FindAndOpenFileError;
+use crate::logging_process::CommandLogger;
+use crate::logging_process::RunError as LoggingProcessRunError;
 use crate::option::OptionResultExt;
 use crate::rebuild;
 use crate::rebuild::DockerContext;
 use crate::rebuild::RebuildError;
-use crate::rebuild::RebuildWithCapturedOutputError;
 use crate::trie::InsertError;
 use crate::trie::Trie;
 
@@ -76,6 +77,7 @@ enum DockEnvironmentMountLocalConfig {
 }
 
 pub fn run(
+    logger: &mut dyn CommandLogger,
     dock_file_name: &str,
     maybe_env_name: Option<&str>,
     flags: &[&str],
@@ -98,7 +100,7 @@ pub fn run(
             .and_maybe_then(|path| RelPath::try_from(path.clone()))
             .context(RelPathFromContextPathFailed)?;
 
-    rebuild_for_run(&dock_dir, env_name, &env_context, &target_img)
+    rebuild_for_run(logger, &dock_dir, env_name, &env_context, &target_img)
         .context(RebuildForRunFailed)?;
 
     let vol_name_prefix =
@@ -271,6 +273,7 @@ pub enum ParseDockConfigError {
 }
 
 fn rebuild_for_run(
+    logger: &mut dyn CommandLogger,
     dock_dir: &AbsPath,
     env_name: &str,
     maybe_context_sub_path: &Option<RelPath>,
@@ -292,15 +295,13 @@ fn rebuild_for_run(
     )
         .context(NewDockerRebuildInputFailed)?;
 
-    let output = rebuild::rebuild_with_captured_output(img, docker_context)
-        .context(RebuildWithCapturedOutputFailed{img: img.to_string()})?;
-
-    let Output{status, stdout, stderr} = output;
+    let status = rebuild::rebuild(logger, img, docker_context)
+        .context(RebuildFailed{img: img.to_string()})?;
 
     if !status.success() {
         let img = img.to_string();
 
-        return Err(RebuildForRunError::RebuildFailed{stdout, stderr, img});
+        return Err(RebuildForRunError::RebuildUnsuccessful{img});
     }
 
     // We ignore the status code returned "by the build step" because there
@@ -315,12 +316,12 @@ pub enum RebuildForRunError {
     #[snafu(display("Couldn't prepare input for `dock rebuild`: {}", source))]
     NewDockerRebuildInputFailed{source: NewDockerContextError},
     #[snafu(display("Couldn't rebuild '{}': {}", img, source))]
-    RebuildWithCapturedOutputFailed{
-        source: RebuildError<Output, RebuildWithCapturedOutputError>,
+    RebuildFailed{
+        source: RebuildError<ExitStatus, LoggingProcessRunError>,
         img: String,
     },
-    #[snafu(display("Couldn't rebuild '{}'", img))]
-    RebuildFailed{img: String, stdout: Vec<u8>, stderr: Vec<u8>},
+    #[snafu(display("Rebuild of '{}' returned an unsuccessful status", img))]
+    RebuildUnsuccessful{img: String},
 }
 
 fn rel_path_from_component(c: OsString) -> RelPath {
