@@ -313,6 +313,8 @@ fn shell(dock_file_name: &str, args: Option<&ArgMatches>) -> i32 {
             "--interactive",
             "--tty",
             "--entrypoint=/bin/sh",
+            // TODO Add tests for `--network=host`.
+            "--network=host",
         ],
         &[],
     )

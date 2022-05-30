@@ -195,7 +195,7 @@ this scenario.
 
 #### Default flags
 
-Behind the scenes, `dock` passes the following to `docker run` by default:
+Behind the scenes, `dock run` passes the following to `docker run` by default:
 
 * `--rm`: This ensures that containers are destroyed once they finish executing.
 * `--init`: This "ensures the usual responsibilities of an init system, such as
@@ -208,6 +208,14 @@ single command, spawns a new shell in the Docker "environment". If a `dock.yaml`
 file contains an environment called `build`, then `dock shell build` will start
 a new shell in that environment. `dock shell` on its own will start a shell in
 the `default_shell_env`.
+
+#### Default flags
+
+Behind the scenes, `dock shell` passes the same default flags to `docker run` as
+`dock run`, and also passes the following:
+
+* `--network=host`: This allows services run inside the container to be accessed
+  as if they were running on the host.
 
 Development
 -----------
