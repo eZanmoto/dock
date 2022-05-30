@@ -13,7 +13,6 @@ use super::success::TestDefinition;
 
 use crate::predicates::prelude::predicate;
 use crate::predicates::prelude::predicate::str as predicate_str;
-use crate::predicates::str::RegexPredicate;
 
 #[test]
 // Given (1) the dock file defines an empty environment called `<env>`
@@ -129,22 +128,13 @@ fn build_with_file_outside_context_directory() {
         // (A)
         .code(1)
         // (B)
-        .stderr(predicate_match(
+        .stderr(success::predicate_match(
             "COPY failed: .*/test.txt: no such file or directory",
         ));
     // (C)
     docker::assert_image_doesnt_exist(&test.image_tagged_name);
     // (D)
     docker::assert_no_containers_from_image(&test.image_tagged_name);
-}
-
-fn predicate_match(s: &str) -> RegexPredicate {
-    predicate_str::is_match(s)
-        .unwrap_or_else(|e| panic!(
-            "couldn't generate a pattern match for '{}': {}",
-            s,
-            e,
-        ))
 }
 
 #[test]
