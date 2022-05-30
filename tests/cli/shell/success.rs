@@ -172,3 +172,42 @@ fn shell_debug_flag() {
 
     pty.expect_eof();
 }
+
+#[test]
+fn shell_overrides_entrypoint() {
+    let test_name = "shell_overrides_entrypoint";
+    let test = test_setup::assert_apply_with_empty_dock_yaml(&Definition{
+        name: test_name,
+        dockerfile_steps: &formatdoc!{
+            "
+                RUN echo '{test_name}' > test.txt
+
+                ENTRYPOINT echo
+            ",
+            test_name = test_name,
+        },
+        fs: &hashmap!{},
+    });
+    let mut pty = unsafe { Expecter::new(
+        "/app/target/debug/dock",
+        &[],
+        TimeVal::seconds(10),
+        &test.dir,
+    ) };
+
+    defer!{
+        docker::assert_kill_image_container(&test.image_tagged_name);
+    };
+
+    pty.expect("# ");
+
+    pty.send("cat 'test.txt'\n");
+
+    pty.expect(test_name);
+
+    pty.expect("# ");
+
+    pty.send("exit\n");
+
+    pty.expect_eof();
+}
