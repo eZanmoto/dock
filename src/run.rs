@@ -425,7 +425,10 @@ fn prepare_run_args(
 )
     -> Result<Vec<String>, PrepareRunArgsError>
 {
-    let mut run_args = to_strings(&["--rm"]);
+    // We pass `--init` in order to forward signals and reap processes. TODO
+    // Give concrete examples to justify providing `--init`.
+    // TODO Add tests for `--init`.
+    let mut run_args = to_strings(&["--rm", "--init"]);
 
     if let Some(cache_volumes) = &env.cache_volumes {
         let args = prepare_run_cache_volumes_args(
