@@ -17,6 +17,7 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::process::ExitStatus;
 use std::process::Output;
+use std::process::Stdio;
 use std::str;
 use std::str::Utf8Error;
 
@@ -31,11 +32,15 @@ use crate::canon_path::AbsPath;
 use crate::canon_path::NewAbsPathError;
 use crate::canon_path::NewRelPathError;
 use crate::canon_path::RelPath;
+use crate::cmd_loggers::CapturingCmdLogger;
+use crate::cmd_loggers::PrefixingCmdLogger;
+use crate::cmd_loggers::StdCmdLogger;
 use crate::docker;
 use crate::docker::AssertRunError as DockerAssertRunError;
-use crate::docker::StreamRunError;
 use crate::fs;
 use crate::fs::FindAndOpenFileError;
+use crate::logging_process;
+use crate::logging_process::CmdLoggerMsg;
 use crate::logging_process::CommandLogger;
 use crate::logging_process::RunError as LoggingProcessRunError;
 use crate::option::OptionResultExt;
@@ -76,8 +81,55 @@ enum DockEnvironmentMountLocalConfig {
     Docker,
 }
 
+pub struct SwitchingCmdLogger<'a> {
+    use_first: bool,
+    pub loggers: CmdLoggers<'a>,
+}
+
+impl<'a> SwitchingCmdLogger<'a> {
+    pub fn new(loggers: CmdLoggers<'a>) -> Self {
+        SwitchingCmdLogger{use_first: true, loggers}
+    }
+
+    fn switch(&mut self) {
+        self.use_first = false;
+    }
+}
+
+impl<'a> CommandLogger for SwitchingCmdLogger<'a> {
+    fn log(&mut self, msg: CmdLoggerMsg) {
+        self.loggers.log(self.use_first, msg);
+    }
+}
+
+pub enum CmdLoggers<'a> {
+    Debugging(PrefixingCmdLogger<'a>),
+    Streaming{
+        capturing: CapturingCmdLogger,
+        streaming: StdCmdLogger<'a>,
+    },
+}
+
+impl<'a> CmdLoggers<'a> {
+    fn log(&mut self, use_first: bool, msg: CmdLoggerMsg) {
+        match self {
+            Self::Debugging(logger) => {
+                logger.log(msg);
+            },
+            Self::Streaming{capturing, streaming} => {
+                if use_first {
+                    capturing.log(msg);
+                } else {
+                    streaming.log(msg);
+                }
+            },
+        }
+    }
+}
+
 pub fn run(
-    logger: &mut dyn CommandLogger,
+    logger: &mut SwitchingCmdLogger,
+    stdin: Stdio,
     dock_file_name: &str,
     maybe_env_name: Option<&str>,
     flags: &[&str],
@@ -103,6 +155,8 @@ pub fn run(
     rebuild_for_run(logger, &dock_dir, env_name, &env_context, &target_img)
         .context(RebuildForRunFailed)?;
 
+    logger.switch();
+
     let vol_name_prefix =
         format!("{}.{}.{}", conf.organisation, conf.project, env_name);
 
@@ -122,7 +176,13 @@ pub fn run(
 
     // TODO Perform the side effects of `prepare_run_cache_volumes_args` here.
 
-    let exit_status = docker::stream_run(run_args)
+    let prog = OsStr::new("docker");
+    let args: Vec<&OsStr> =
+        run_args
+            .iter()
+            .map(OsStr::new)
+            .collect();
+    let exit_status = logging_process::run(logger, prog, &args, stdin)
         .context(DockerRunFailed)?;
 
     Ok(exit_status)
@@ -157,7 +217,7 @@ pub enum RunError {
     ))]
     PrepareRunArgsFailed{source: PrepareRunArgsError},
     #[snafu(display("`docker run` failed: {}", source))]
-    DockerRunFailed{source: StreamRunError},
+    DockerRunFailed{source: LoggingProcessRunError},
 }
 
 fn tagged_image_name(org: &str, proj: &str, env_name: &str) -> String {

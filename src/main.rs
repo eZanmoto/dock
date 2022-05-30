@@ -4,9 +4,12 @@
 
 use std::env;
 use std::io;
+use std::io::StderrLock;
+use std::io::StdoutLock;
 use std::io::Write;
 use std::process;
 use std::process::ExitStatus;
+use std::process::Stdio;
 use std::str;
 
 use clap::Arg;
@@ -24,13 +27,19 @@ mod run;
 mod trie;
 
 use cmd_loggers::CapturingCmdLogger;
+use cmd_loggers::Prefixer;
+use cmd_loggers::PrefixingCmdLogger;
+use cmd_loggers::StdCmdLogger;
 use cmd_loggers::Stream;
+use run::CmdLoggers;
 use run::RebuildForRunError;
 use run::RunError;
+use run::SwitchingCmdLogger;
 
 const TAGGED_IMG_FLAG: &str = "tagged-image";
 const DOCKER_ARGS_FLAG: &str = "docker-args";
 const ENV_FLAG: &str = "env";
+const DEBUG_FLAG: &str = "debug";
 
 fn main() {
     let rebuild_about: &str =
@@ -71,6 +80,10 @@ fn main() {
                     .trailing_var_arg(true)
                     .about(run_about)
                     .args(&[
+                        Arg::new(DEBUG_FLAG)
+                            .short('D')
+                            .long(DEBUG_FLAG)
+                            .help("Output debugging information"),
                         Arg::new(ENV_FLAG)
                             .required(true)
                             .help("The environment to run"),
@@ -81,6 +94,10 @@ fn main() {
                 Command::new("shell")
                     .about(shell_about)
                     .args(&[
+                        Arg::new(DEBUG_FLAG)
+                            .short('D')
+                            .long(DEBUG_FLAG)
+                            .help("Output debugging information"),
                         Arg::new(ENV_FLAG)
                             .help("The environment to run"),
                     ]),
@@ -189,57 +206,91 @@ fn handle_run(
     flags: &[&str],
     cmd_args: &[&str],
 ) -> i32 {
-    let mut logger = CapturingCmdLogger::new();
-
+    let mut debug = false;
     let mut env_name = None;
     if let Some(args) = args {
         env_name = args.value_of(ENV_FLAG);
+
+        if args.is_present(DEBUG_FLAG) {
+            debug = true;
+        }
     }
 
-    let result = run::run(
-        &mut logger,
-        dock_file_name,
-        env_name,
-        flags,
-        cmd_args,
-    );
-
-    match result {
-        Ok(exit_status) => {
-            exit_code_from_exit_status(exit_status)
-        },
-        Err(e) => {
-            match e {
-                RunError::RebuildForRunFailed{
-                    source: RebuildForRunError::RebuildUnsuccessful{..},
-                } => {
-                    write_streams(logger.streams);
-                },
-                _ => {
-                    eprintln!("{}", e);
-                },
-            }
-
-            1
-        },
-    }
-}
-
-fn write_streams(streams: Vec<(Stream, Vec<u8>)>) {
     let stdout = io::stdout();
     let mut stdout = stdout.lock();
 
     let stderr = io::stderr();
     let mut stderr = stderr.lock();
 
-    for (stream, bs) in streams {
+    let loggers =
+        if debug {
+            CmdLoggers::Debugging(PrefixingCmdLogger::new(
+                &mut stdout,
+                b"[$] ",
+                Prefixer::new(b"[>] "),
+                Prefixer::new(b"[!] "),
+            ))
+        } else {
+            CmdLoggers::Streaming{
+                capturing: CapturingCmdLogger::new(),
+                streaming: StdCmdLogger::new(&mut stdout, &mut stderr),
+            }
+        };
+
+    let mut logger = SwitchingCmdLogger::new(loggers);
+    let result = run::run(
+        &mut logger,
+        // TODO We would ideally lock and pass the `stdio` for the current
+        // process but this requires unsafe file descriptor use and makes this
+        // program more Unix-dependent.
+        Stdio::inherit(),
+        dock_file_name,
+        env_name,
+        flags,
+        cmd_args,
+    );
+
+    // TODO Check if the prefixing command logger has an error.
+
+    match result {
+        Ok(exit_status) => {
+            exit_code_from_exit_status(exit_status)
+        },
+        Err(err) => {
+            match (err, logger.loggers) {
+                (
+                    RunError::RebuildForRunFailed{
+                        source: RebuildForRunError::RebuildUnsuccessful{..},
+                    },
+                    CmdLoggers::Streaming{capturing, ..},
+                ) => {
+                    let chunks = &capturing.chunks;
+
+                    write_streams(&mut stdout, &mut stderr, chunks);
+                },
+                (e, _) => {
+                    eprintln!("{}", e);
+                },
+            };
+
+            1
+        },
+    }
+}
+
+fn write_streams(
+    mut stdout: &mut StdoutLock,
+    mut stderr: &mut StderrLock,
+    chunks: &[(Stream, Vec<u8>)],
+) {
+    for (stream, bs) in chunks {
         let out =
             match stream {
                 Stream::Stdout => &mut stdout as &mut dyn Write,
                 Stream::Stderr => &mut stderr as &mut dyn Write,
             };
 
-        if let Err(e) = out.write_all(&bs) {
+        if let Err(e) = out.write_all(bs) {
             eprintln!("couldn't write stream ({:?}): {}", stream, e);
             return;
         }
