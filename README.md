@@ -138,7 +138,7 @@ environments:
   scenarios, where the Docker server is made available to a container by
   enabling `nested_docker`. See the "`mounts`" section, below, for more details.
 
-### `mounts`
+##### `mounts`
 
 The `mounts` section provides a shortcut for bind-mounting files and directories
 that are defined relative to `dock.yaml`. In addition, "nested" bind mounts can
@@ -167,7 +167,7 @@ inside containers, back to the actual paths on the host. This can allow
 bind-mounting to be utilised to any depth of container nesting, as long as all
 paths are reachable on the host.
 
-### `cache_mounts`
+##### `cache_mounts`
 
 `cache_mounts` exists to help in scenarios where a volume should be available to
 a container, but where the container is run with a non-`root` user. Before a
@@ -185,6 +185,13 @@ solution ideally happens after this. Different options are possible, such as
 using `sudo`, `su`, scripts with sticky bits, or possibly using BuildKit, but
 `cache_mounts` can be used as a general, image-independent mechanism to handle
 this scenario.
+
+#### Flags
+
+* `--debug`/`-D`: This will cause `dock run` to output the Docker commands that
+  `dock run` runs, as well as the output of those commands, as they're being
+  run. This can be useful, for example, to see the output of the "rebuild" step
+  as it happens, as this step is usually hidden unless an error occurs.
 
 ### `dock shell`
 
