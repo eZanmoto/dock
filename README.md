@@ -193,6 +193,14 @@ this scenario.
   run. This can be useful, for example, to see the output of the "rebuild" step
   as it happens, as this step is usually hidden unless an error occurs.
 
+#### Default flags
+
+Behind the scenes, `dock` passes the following to `docker run` by default:
+
+* `--rm`: This ensures that containers are destroyed once they finish executing.
+* `--init`: This "ensures the usual responsibilities of an init system, such as
+  reaping zombie processes, are performed inside the created container."
+
 ### `dock shell`
 
 `dock shell` has the same behaviour as `dock run`, but instead of running a
