@@ -3,9 +3,11 @@
 // licence that can be found in the LICENCE file.
 
 use std::error::Error;
+use std::ffi::OsString;
 use std::fmt::Debug;
 use std::fs::File;
 use std::io::Error as IoError;
+use std::path::PathBuf;
 use std::process::Command;
 use std::process::ExitStatus;
 use std::process::Output;
@@ -14,17 +16,19 @@ use std::process::Stdio;
 use snafu::ResultExt;
 use snafu::Snafu;
 
+use crate::canon_path::AbsPath;
 use crate::docker;
 use crate::docker::AssertRunError;
 use crate::docker::GetImageIdsError;
 use crate::docker::StreamRunError;
 
-pub fn rebuild_with_streaming_output(target_img: &str, args: Vec<&str>)
+// TODO Take `args` as `&[&OsStr]`.
+pub fn rebuild_with_streaming_output(target_img: &str, args: &[&str])
     -> Result<ExitStatus, RebuildError<ExitStatus, StreamRunError>>
 {
     rebuild_img(
         target_img,
-        args,
+        strs_to_os_strings(args),
         |build_args| {
             let build_result = docker::stream_run(build_args)?;
 
@@ -33,10 +37,17 @@ pub fn rebuild_with_streaming_output(target_img: &str, args: Vec<&str>)
     )
 }
 
-fn rebuild_img<F, V, E>(target_img: &str, args: Vec<&str>, build_img: F)
+fn strs_to_os_strings(strs: &[&str]) -> Vec<OsString> {
+    strs
+        .iter()
+        .map(OsString::from)
+        .collect()
+}
+
+fn rebuild_img<F, V, E>(target_img: &str, args: Vec<OsString>, build_img: F)
     -> Result<V, RebuildError<V, E>>
 where
-    F: FnOnce(Vec<&str>) -> Result<(V, bool), E>,
+    F: FnOnce(Vec<OsString>) -> Result<(V, bool), E>,
     E: Error + 'static,
     V: Clone + Debug,
 {
@@ -59,7 +70,8 @@ where
     // build, but leaves them after a failed build. We use `--force-rm` to
     // remove them even if the build failed. See "Container Removal" in
     // `README.md` for more details.
-    let mut build_args = vec!["build", tag_flag, "--force-rm"];
+    let mut build_args: Vec<OsString> =
+        strs_to_os_strings(&["build", tag_flag, "--force-rm"]);
 
     build_args.extend(args);
 
@@ -136,22 +148,34 @@ where
     MultipleImageIdsAfterBuild{ids: Vec<String>, repo: String},
 }
 
-pub fn rebuild_with_captured_output(
-    target_img: &str,
-    dockerfile: Option<File>,
-    args: Vec<&str>,
-)
+pub enum DockerContext {
+    Empty{dockerfile: File},
+    Dir{path: AbsPath, dockerfile: AbsPath},
+}
+
+pub fn rebuild_with_captured_output(target_img: &str, context: DockerContext)
     -> Result<Output, RebuildError<Output, RebuildWithCapturedOutputError>>
 {
+    let stdin;
+    let args;
+    match context {
+        DockerContext::Empty{dockerfile} => {
+            stdin = Stdio::from(dockerfile);
+            args = vec![OsString::from("-")];
+        },
+        DockerContext::Dir{path, dockerfile} => {
+            stdin = Stdio::null();
+
+            let mut file_arg = OsString::from("--file=");
+            file_arg.push(PathBuf::from(dockerfile).as_os_str());
+            args = vec![file_arg, PathBuf::from(path).into_os_string()];
+        },
+    }
+
     rebuild_img(
         target_img,
         args,
         |build_args| {
-            let mut stdin = Stdio::null();
-            if let Some(f) = dockerfile {
-                stdin = Stdio::from(f);
-            }
-
             let docker_proc =
                 Command::new("docker")
                     .args(build_args)

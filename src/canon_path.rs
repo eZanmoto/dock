@@ -157,6 +157,8 @@ pub struct RelPath {
 
 impl From<Vec<OsString>> for RelPath {
     fn from(components: Vec<OsString>) -> Self {
+        // TODO Consider the fact that a component may contain `/`.
+
         Self{components}
     }
 }

@@ -13,7 +13,6 @@ use std::fs as std_fs;
 use std::fs::File;
 use std::io::Error as IoError;
 use std::os::unix::fs::MetadataExt;
-use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
 use std::process::ExitStatus;
@@ -39,6 +38,7 @@ use crate::fs;
 use crate::fs::FindAndOpenFileError;
 use crate::option::OptionResultExt;
 use crate::rebuild;
+use crate::rebuild::DockerContext;
 use crate::rebuild::RebuildError;
 use crate::rebuild::RebuildWithCapturedOutputError;
 use crate::trie::InsertError;
@@ -278,26 +278,21 @@ fn rebuild_for_run(
 )
     -> Result<(), RebuildForRunError>
 {
-    let mut dockerfile_path = PathBuf::from(dock_dir.clone());
-    dockerfile_path.push(format!("{}.Dockerfile", env_name));
+    // TODO Consider the fact that `env_name` may contain `/`; it may be worth
+    // adding an `EnvName` type with validation in its constructor.
+    let dockerfile_name = OsString::from(format!("{}.Dockerfile", env_name));
 
-    let docker_rebuild_input_result = new_docker_rebuild_input(
+    let dockerfile_path =
+        dock_dir.concat(&rel_path_from_component(dockerfile_name));
+
+    let docker_context = new_docker_context(
         dock_dir,
-        dockerfile_path.as_path(),
+        dockerfile_path,
         maybe_context_sub_path,
-    );
-    let docker_rebuild_input = docker_rebuild_input_result
+    )
         .context(NewDockerRebuildInputFailed)?;
 
-    let output = rebuild::rebuild_with_captured_output(
-        img,
-        docker_rebuild_input.dockerfile,
-        docker_rebuild_input
-            .args
-            .iter()
-            .map(AsRef::as_ref)
-            .collect(),
-    )
+    let output = rebuild::rebuild_with_captured_output(img, docker_context)
         .context(RebuildWithCapturedOutputFailed{img: img.to_string()})?;
 
     let Output{status, stdout, stderr} = output;
@@ -318,7 +313,7 @@ fn rebuild_for_run(
 #[derive(Debug, Snafu)]
 pub enum RebuildForRunError {
     #[snafu(display("Couldn't prepare input for `dock rebuild`: {}", source))]
-    NewDockerRebuildInputFailed{source: NewDockerRebuildInputError},
+    NewDockerRebuildInputFailed{source: NewDockerContextError},
     #[snafu(display("Couldn't rebuild '{}': {}", img, source))]
     RebuildWithCapturedOutputFailed{
         source: RebuildError<Output, RebuildWithCapturedOutputError>,
@@ -328,67 +323,37 @@ pub enum RebuildForRunError {
     RebuildFailed{img: String, stdout: Vec<u8>, stderr: Vec<u8>},
 }
 
-fn new_docker_rebuild_input(
+fn rel_path_from_component(c: OsString) -> RelPath {
+    RelPath::from(vec![c])
+}
+
+fn new_docker_context(
     dock_dir: &AbsPath,
-    dockerfile_path: &Path,
+    dockerfile_path: AbsPath,
     maybe_context_sub_path: &Option<RelPath>,
 )
-    -> Result<DockerRebuildInput, NewDockerRebuildInputError>
+    -> Result<DockerContext, NewDockerContextError>
 {
     if let Some(context_sub_path) = maybe_context_sub_path {
         let context_path = dock_dir.concat(context_sub_path);
 
-        let context_path_path_buf = PathBuf::from(context_path.clone());
-
-        let context_path_cli_arg = context_path_path_buf.to_str()
-                .context(InvalidUtf8InContextPath{path: context_path})?;
-
-        let dockerfile_path_cli_arg = dockerfile_path.to_str()
-            .context(InvalidUtf8InDockerfilePath{
-                path: dockerfile_path.to_path_buf(),
-            })?;
-
-        Ok(DockerRebuildInput{
-            dockerfile: None,
-            args: vec![
-                format!("--file={}", dockerfile_path_cli_arg),
-                context_path_cli_arg.to_owned(),
-            ]
-        })
+        Ok(DockerContext::Dir{path: context_path, dockerfile: dockerfile_path})
     } else {
-        let dockerfile = File::open(&dockerfile_path)
+        let dockerfile = File::open(PathBuf::from(dockerfile_path.clone()))
             .context(OpenDockerfileFailed{path: dockerfile_path})?;
 
-        Ok(DockerRebuildInput{
-            dockerfile: Some(dockerfile),
-            args: vec!["-".to_string()],
-        })
+        Ok(DockerContext::Empty{dockerfile})
     }
 }
 
-struct DockerRebuildInput {
-    args: Vec<String>,
-    dockerfile: Option<File>,
-}
-
 #[derive(Debug, Snafu)]
-pub enum NewDockerRebuildInputError {
-    #[snafu(display(
-        "The path to the Docker context ('{}') contained invalid UTF-8",
-        path.display_lossy(),
-    ))]
-    InvalidUtf8InContextPath{path: AbsPath},
-    #[snafu(display(
-        "The path to the Dockerfile ('{}') contained invalid UTF-8",
-        path.display(),
-    ))]
-    InvalidUtf8InDockerfilePath{path: PathBuf},
+pub enum NewDockerContextError {
     #[snafu(display(
         "Couldn't open the Dockerfile '{}': {}",
-        path.display(),
+        path.display_lossy(),
         source,
     ))]
-    OpenDockerfileFailed{source: IoError, path: PathBuf},
+    OpenDockerfileFailed{source: IoError, path: AbsPath},
 }
 
 fn prepare_run_args(

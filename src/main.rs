@@ -90,11 +90,9 @@ fn main() {
                     Some(vs) => vs.collect(),
                     None => vec![],
                 };
+            let target_img = sub_args.value_of(TAGGED_IMG_FLAG).unwrap();
 
-            let exit_code = rebuild(
-                sub_args.value_of(TAGGED_IMG_FLAG).unwrap(),
-                docker_args,
-            );
+            let exit_code = rebuild(target_img, &docker_args);
             process::exit(exit_code);
         },
         Some(("run", sub_args)) => {
@@ -121,17 +119,13 @@ fn main() {
     }
 }
 
-fn rebuild(target_img: &str, docker_args: Vec<&str>) -> i32 {
-    if let Some(i) = index_of_first_unsupported_flag(&docker_args) {
+fn rebuild(target_img: &str, docker_args: &[&str]) -> i32 {
+    if let Some(i) = index_of_first_unsupported_flag(docker_args) {
         eprintln!("unsupported argument: `{}`", docker_args[i]);
         return 1;
     }
 
-    let rebuild_result = rebuild::rebuild_with_streaming_output(
-        target_img,
-        docker_args,
-    );
-    match rebuild_result {
+    match rebuild::rebuild_with_streaming_output(target_img, docker_args) {
         Ok(exit_status) => {
             exit_code_from_exit_status(exit_status)
         },
