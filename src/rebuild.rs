@@ -158,11 +158,12 @@ pub fn rebuild(
     logger: &mut dyn CommandLogger,
     target_img: &str,
     context: DockerContext,
+    extra_args: &[&str],
 )
     -> Result<ExitStatus, RebuildError<ExitStatus, RunError>>
 {
     let stdin;
-    let args;
+    let mut args;
     match context {
         DockerContext::Empty{dockerfile} => {
             stdin = Stdio::from(dockerfile);
@@ -176,6 +177,8 @@ pub fn rebuild(
             args = vec![file_arg, PathBuf::from(path).into_os_string()];
         },
     }
+
+    args.extend(strs_to_os_strings(extra_args));
 
     rebuild_img(
         target_img,

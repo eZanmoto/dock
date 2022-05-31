@@ -433,7 +433,7 @@ fn manual_volume_has_root_permission() {
         // (2)
         &formatdoc!{
             "
-                args:
+                run_args:
                 - --mount=type=volume,src={vol_name},dst=/a/b
             ",
             vol_name = vol_name,

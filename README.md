@@ -84,7 +84,10 @@ environments:
   build:
     workdir: /app
 
-    args:
+    build_args:
+    - --build-arg=USER_ID=1000
+
+    run_args:
     - --env=XDG_CACHE_HOME=/tmp/cache
     - --group-add=test
 
@@ -111,8 +114,10 @@ environments:
   shell in if no environment is provided.
 * `workdir`: This defines the directory that the command is run in inside the
   container.
-* `args`: These `args` are passed to the underlying `docker run` command in the
-  same order.
+* `build_args`: These arguments are passed to the underlying `docker build`
+  command in the same order.
+* `run_args`: These arguments are passed to the underlying `docker run` command
+  in the same order.
 * `env`: These environment variable definitions are exported inside the Docker
   container.
 * `mount_local.user`: This performs "local user mapping", so that the command

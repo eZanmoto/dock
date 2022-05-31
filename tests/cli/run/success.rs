@@ -458,7 +458,7 @@ fn run_with_env_var() {
     let test = test_setup::assert_apply_with_dock_yaml(
         // (2)
         indoc!{"
-            args:
+            run_args:
             - --env=X=a
             - --env=Y=b
         "},
@@ -495,7 +495,7 @@ fn run_with_specific_user() {
     let test = test_setup::assert_apply_with_dock_yaml(
         // (2)
         indoc!{"
-            args:
+            run_args:
             - --user=1234
         "},
         &Definition{
@@ -912,4 +912,44 @@ pub fn predicate_match(s: &str) -> RegexPredicate {
             s,
             e,
         ))
+}
+
+#[test]
+// Given (1) the dock file defines an environment called `<env>`
+//     AND (2) `<env>` adds a `--build-arg` build argument for `TEST_VALUE`
+//     AND (3) `<env>`'s Dockerfile saves `TEST_VALUE` in `/test.txt`
+// When `run <env> cat /test.txt` is run
+// Then (A) the command is successful
+//     AND (B) the command STDERR is empty
+//     AND (C) the command STDOUT contains the value of `TEST_VALUE`
+fn run_with_build_args() {
+    let test_name = "run_with_build_args";
+    // (1)
+    let test = test_setup::assert_apply_with_dock_yaml(
+        // (2)
+        indoc!{"
+            build_args:
+            - --build-arg=TEST_VALUE=test-value
+        "},
+        &Definition{
+            name: test_name,
+            fs: &hashmap!{},
+            // (3)
+            dockerfile_steps: "
+                ARG TEST_VALUE
+                RUN echo \"$TEST_VALUE\" > /test.txt
+            ",
+        },
+    );
+    docker::assert_remove_image(&test.image_tagged_name);
+
+    let cmd_result = run_test_cmd(&test.dir, &[test_name, "cat", "/test.txt"]);
+
+    cmd_result
+        // (A)
+        .code(0)
+        // (B)
+        .stderr("")
+        // (C)
+        .stdout("test-value\n");
 }

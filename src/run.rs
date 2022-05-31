@@ -61,11 +61,12 @@ struct DockConfig {
 
 // TODO Consider whether to automatically deserialise `PathBuf`s using `serde`,
 // or to read them as `String`s and parse them directly.
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 struct DockEnvironmentConfig {
     context: Option<PathBuf>,
     workdir: Option<String>,
-    args: Option<Vec<String>>,
+    build_args: Option<Vec<String>>,
+    run_args: Option<Vec<String>>,
     env: Option<HashMap<String, String>>,
     cache_volumes: Option<HashMap<String, PathBuf>>,
     mounts: Option<HashMap<PathBuf, PathBuf>>,
@@ -152,7 +153,22 @@ pub fn run(
             .and_maybe_then(|path| RelPath::try_from(path.clone()))
             .context(RelPathFromContextPathFailed)?;
 
-    rebuild_for_run(logger, &dock_dir, env_name, &env_context, &target_img)
+    let build_args = env.build_args.clone().unwrap_or_default();
+
+    let build_args: Vec<&str> =
+        build_args
+            .iter()
+            .map(AsRef::as_ref)
+            .collect();
+
+    rebuild_for_run(
+        logger,
+        &dock_dir,
+        env_name,
+        &env_context,
+        &target_img,
+        &build_args,
+    )
         .context(RebuildForRunFailed)?;
 
     logger.switch();
@@ -338,6 +354,7 @@ fn rebuild_for_run(
     env_name: &str,
     maybe_context_sub_path: &Option<RelPath>,
     img: &str,
+    args: &[&str],
 )
     -> Result<(), RebuildForRunError>
 {
@@ -355,7 +372,7 @@ fn rebuild_for_run(
     )
         .context(NewDockerRebuildInputFailed)?;
 
-    let status = rebuild::rebuild(logger, img, docker_context)
+    let status = rebuild::rebuild(logger, img, docker_context, args)
         .context(RebuildFailed{img: img.to_string()})?;
 
     if !status.success() {
@@ -441,9 +458,7 @@ fn prepare_run_args(
         run_args.extend(args);
     }
 
-    if let Some(args) = &env.args {
-        run_args.extend(args.clone());
-    }
+    run_args.extend(env.run_args.clone().unwrap_or_default());
 
     if let Some(dir) = &env.workdir {
         run_args.push(format!("--workdir={}", dir));
