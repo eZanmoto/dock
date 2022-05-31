@@ -1,0 +1,26 @@
+# Copyright 2022 Sean Kelleher. All rights reserved.
+# Use of this source code is governed by an MIT
+# licence that can be found in the LICENCE file.
+
+schema_version: '0.1'
+organisation: 'ezanmoto'
+project: 'dock'
+default_shell_env: 'cross'
+
+environments:
+  cross:
+    workdir: /app
+
+    cache_volumes:
+      cargo: /cargo
+
+    env:
+      CARGO_HOME: /cargo
+
+    # We run the `cross` build environment as `root` instead of mounting the
+    # local user because version 0.2.1 of `cross` requires the active user to
+    # have a username; see <https://github.com/rust-embedded/cross/pull/505> for
+    # more details.
+    mount_local:
+    - project_dir
+    - docker

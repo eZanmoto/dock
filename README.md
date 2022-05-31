@@ -253,3 +253,10 @@ A subset of integration tests can be run by passing name patterns to `just`:
     just check add
 
 The commands above will run all integration tests whose name contains "add".
+
+### Release
+
+Release binaries are built using `build_release.sh` with a [`cross`
+target](https://github.com/rust-embedded/cross#supported-targets):
+
+    bash scripts/build_release.sh x86_64-unknown-linux-musl
