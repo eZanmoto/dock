@@ -7,6 +7,8 @@ use std::io;
 use std::io::StderrLock;
 use std::io::StdoutLock;
 use std::io::Write;
+use std::path::Path;
+use std::path::PathBuf;
 use std::process;
 use std::process::ExitStatus;
 use std::process::Stdio;
@@ -197,7 +199,7 @@ fn run(dock_file_name: &str, args: &ArgMatches) -> i32 {
             None => vec![],
         };
 
-    handle_run(dock_file_name, Some(args), &[], &cmd_args)
+    handle_run(dock_file_name, Some(args), &[], &cmd_args, None)
 }
 
 fn handle_run(
@@ -205,6 +207,7 @@ fn handle_run(
     args: Option<&ArgMatches>,
     flags: &[&str],
     cmd_args: &[&str],
+    shell: Option<PathBuf>,
 ) -> i32 {
     let mut debug = false;
     let mut env_name = None;
@@ -248,6 +251,7 @@ fn handle_run(
         env_name,
         flags,
         cmd_args,
+        shell,
     );
 
     // TODO Check if the prefixing command logger has an error.
@@ -312,10 +316,10 @@ fn shell(dock_file_name: &str, args: Option<&ArgMatches>) -> i32 {
         &[
             "--interactive",
             "--tty",
-            "--entrypoint=/bin/sh",
             // TODO Add tests for `--network=host`.
             "--network=host",
         ],
         &[],
+        Some(Path::new("/bin/sh").to_path_buf()),
     )
 }

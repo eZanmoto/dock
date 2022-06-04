@@ -108,6 +108,8 @@ environments:
     # details.
     mounts:
       ./relative/path: /inner/path
+
+    shell: /bin/bash
 ```
 
 * `default_shell_env`: This is the environment that `dock shell` will spawn a
@@ -142,6 +144,7 @@ environments:
   using absolute paths). These can also allow for bind mounts in "nested" Docker
   scenarios, where the Docker server is made available to a container by
   enabling `nested_docker`. See the "`mounts`" section, below, for more details.
+* `shell`: This defines the shell to run for `dock shell`.
 
 ##### `mounts`
 

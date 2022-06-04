@@ -211,3 +211,43 @@ fn shell_overrides_entrypoint() {
 
     pty.expect_eof();
 }
+
+#[test]
+fn shell_with_bash() {
+    let test_name = "shell_with_bash";
+    let test = test_setup::assert_apply_with_dock_yaml(
+        indoc!{"
+            shell: /bin/bash
+        "},
+        &Definition{
+            name: test_name,
+            dockerfile_steps: indoc!{"
+                RUN apk update \\
+                    && apk add bash
+            "},
+            fs: &hashmap!{},
+        },
+    );
+    let mut pty = unsafe { Expecter::new(
+        "/app/target/debug/dock",
+        &[],
+        TimeVal::seconds(10),
+        &test.dir,
+    ) };
+
+    defer!{
+        docker::assert_kill_image_container(&test.image_tagged_name);
+    };
+
+    pty.expect("# ");
+
+    pty.send("echo $0\n");
+
+    pty.expect("/bin/bash");
+
+    pty.expect("# ");
+
+    pty.send("exit\n");
+
+    pty.expect_eof();
+}

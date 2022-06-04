@@ -71,6 +71,7 @@ struct DockEnvironmentConfig {
     cache_volumes: Option<HashMap<String, PathBuf>>,
     mounts: Option<HashMap<PathBuf, PathBuf>>,
     mount_local: Option<Vec<DockEnvironmentMountLocalConfig>>,
+    shell: Option<PathBuf>,
 }
 
 #[derive(Debug, Deserialize, PartialEq)]
@@ -135,6 +136,9 @@ pub fn run(
     maybe_env_name: Option<&str>,
     flags: &[&str],
     cmd_args: &[&str],
+    // TODO Remove the `shell` parameter to decouple this function from the
+    // `shell` subcommand.
+    shell: Option<PathBuf>,
 ) -> Result<ExitStatus, RunError> {
     let (dock_dir, conf) = find_and_parse_dock_config(dock_file_name)
         .context(FindAndParseDockConfigFailed{dock_file_name})?;
@@ -177,6 +181,14 @@ pub fn run(
         format!("{}.{}.{}", conf.organisation, conf.project, env_name);
 
     let mut run_args = to_strings(&["run"]);
+
+    if let Some(mut shell) = shell {
+        if let Some(s) = &env.shell {
+            shell = s.clone();
+        }
+
+        run_args.push(format!("--entrypoint={}", shell.display()));
+    }
 
     let main_run_args =
         prepare_run_args(env, &dock_dir, &vol_name_prefix, &target_img)
