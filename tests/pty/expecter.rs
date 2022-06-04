@@ -94,7 +94,7 @@ impl Expecter {
             // to read again because there may already be a match in the
             // currently unmatched portion of the buffer.
             if let Some(i) = self.matches(seq) {
-                self.last_match = i;
+                self.last_match = i + seq.len();
                 break;
             }
 
