@@ -6,6 +6,7 @@ use crate::docker;
 use crate::pty::expecter::Expecter;
 use crate::test_setup;
 use crate::test_setup::Definition;
+use crate::test_setup::References;
 
 use crate::nix::sys::time::TimeVal;
 use crate::nix::sys::time::TimeValLike;
@@ -13,24 +14,8 @@ use crate::nix::sys::time::TimeValLike;
 #[test]
 fn shell_uses_correct_image() {
     let test_name = "shell_uses_correct_image";
-    let test = test_setup::assert_apply_with_empty_dock_yaml(&Definition{
-        name: test_name,
-        dockerfile_steps: &formatdoc!{
-            "
-                RUN echo '{test_name}' > test.txt
-            ",
-            test_name = test_name,
-        },
-        fs: &hashmap!{},
-    });
-    let mut pty = unsafe { Expecter::new(
-        test_setup::test_bin().as_os_str(),
-        &["shell", test_name],
-        // We use a long timeout to give `dock` time to rebuild the image
-        // before the shell starts.
-        TimeVal::seconds(10),
-        &test.dir,
-    ) };
+    let args = &["shell", test_name];
+    let (test, mut pty) = unsafe { set_up(test_name, args) };
 
     // We use `defer!` to run cleanup for tests. We generally use higher-order
     // functions to perform such cleanups, but these are less applicable in the
@@ -56,9 +41,9 @@ fn shell_uses_correct_image() {
     pty.expect_eof();
 }
 
-#[test]
-fn dock_shell_uses_default_shell_env() {
-    let test_name = "dock_shell_uses_default_shell_env";
+unsafe fn set_up(test_name: &str, cmd_args: &[&str])
+    -> (References, Expecter)
+{
     let test = test_setup::assert_apply_with_empty_dock_yaml(&Definition{
         name: test_name,
         dockerfile_steps: &formatdoc!{
@@ -69,12 +54,28 @@ fn dock_shell_uses_default_shell_env() {
         },
         fs: &hashmap!{},
     });
-    let mut pty = unsafe { Expecter::new(
+
+    let pty = new_test_cmd(cmd_args, &test.dir);
+
+    (test, pty)
+}
+
+unsafe fn new_test_cmd(cmd_args: &[&str], test_dir: &str) -> Expecter {
+    Expecter::new(
         test_setup::test_bin().as_os_str(),
-        &["shell"],
+        cmd_args,
+        // We use a long timeout to give `dock` time to rebuild the image
+        // before the shell starts.
         TimeVal::seconds(10),
-        &test.dir,
-    ) };
+        test_dir,
+    )
+}
+
+#[test]
+fn dock_shell_uses_default_shell_env() {
+    let test_name = "dock_shell_uses_default_shell_env";
+    let args = &["shell"];
+    let (test, mut pty) = unsafe { set_up(test_name, args) };
 
     defer!{
         docker::assert_kill_image_container(&test.image_tagged_name);
@@ -96,22 +97,8 @@ fn dock_shell_uses_default_shell_env() {
 #[test]
 fn dock_runs_shell_by_default() {
     let test_name = "dock_runs_shell_by_default";
-    let test = test_setup::assert_apply_with_empty_dock_yaml(&Definition{
-        name: test_name,
-        dockerfile_steps: &formatdoc!{
-            "
-                RUN echo '{test_name}' > test.txt
-            ",
-            test_name = test_name,
-        },
-        fs: &hashmap!{},
-    });
-    let mut pty = unsafe { Expecter::new(
-        test_setup::test_bin().as_os_str(),
-        &[],
-        TimeVal::seconds(10),
-        &test.dir,
-    ) };
+    let args = &[];
+    let (test, mut pty) = unsafe { set_up(test_name, args) };
 
     defer!{
         docker::assert_kill_image_container(&test.image_tagged_name);
@@ -133,22 +120,8 @@ fn dock_runs_shell_by_default() {
 #[test]
 fn shell_debug_flag() {
     let test_name = "shell_debug_flag";
-    let test = test_setup::assert_apply_with_empty_dock_yaml(&Definition{
-        name: test_name,
-        dockerfile_steps: &formatdoc!{
-            "
-                RUN echo '{test_name}' > test.txt
-            ",
-            test_name = test_name,
-        },
-        fs: &hashmap!{},
-    });
-    let mut pty = unsafe { Expecter::new(
-        test_setup::test_bin().as_os_str(),
-        &["shell", test_name, "--debug"],
-        TimeVal::seconds(10),
-        &test.dir,
-    ) };
+    let args = &["shell", test_name, "--debug"];
+    let (test, mut pty) = unsafe { set_up(test_name, args) };
 
     defer!{
         docker::assert_kill_image_container(&test.image_tagged_name);
@@ -187,12 +160,7 @@ fn shell_overrides_entrypoint() {
         },
         fs: &hashmap!{},
     });
-    let mut pty = unsafe { Expecter::new(
-        test_setup::test_bin().as_os_str(),
-        &[],
-        TimeVal::seconds(10),
-        &test.dir,
-    ) };
+    let mut pty = unsafe { new_test_cmd(&[], &test.dir) };
 
     defer!{
         docker::assert_kill_image_container(&test.image_tagged_name);
@@ -227,12 +195,7 @@ fn shell_with_bash() {
             fs: &hashmap!{},
         },
     );
-    let mut pty = unsafe { Expecter::new(
-        test_setup::test_bin().as_os_str(),
-        &[],
-        TimeVal::seconds(10),
-        &test.dir,
-    ) };
+    let mut pty = unsafe { new_test_cmd(&[], &test.dir) };
 
     defer!{
         docker::assert_kill_image_container(&test.image_tagged_name);
