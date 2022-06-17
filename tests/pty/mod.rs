@@ -5,6 +5,7 @@
 pub mod expecter;
 
 use std::ffi::OsStr;
+use std::io::ErrorKind;
 use std::os::unix::io::FromRawFd;
 use std::process::Child;
 use std::process::Command;
@@ -97,8 +98,16 @@ impl Drop for Pty {
         // <https://doc.rust-lang.org/std/os/unix/io/trait.FromRawFd.html> for
         // more information.
 
-        self.child.kill()
-            .expect("couldn't kill the PTY process");
+        if let Err(e) = self.child.kill() {
+            // According to the documentation for `kill()`:
+            //
+            // > If the child has already exited, an `InvalidInput` error is
+            // > returned.
+            if e.kind() == ErrorKind::InvalidInput {
+                return;
+            }
+            panic!("couldn't kill the PTY process: {}", e);
+        }
 
         self.child.wait()
             .expect("couldn't wait for the PTY process");
