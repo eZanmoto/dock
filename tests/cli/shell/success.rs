@@ -24,8 +24,7 @@ fn shell_uses_correct_image() {
         fs: &hashmap!{},
     });
     let mut pty = unsafe { Expecter::new(
-        // TODO Abstract the `dock` program being tested.
-        "/app/target/debug/dock",
+        test_setup::test_bin().as_os_str(),
         &["shell", test_name],
         // We use a long timeout to give `dock` time to rebuild the image
         // before the shell starts.
@@ -71,7 +70,7 @@ fn dock_shell_uses_default_shell_env() {
         fs: &hashmap!{},
     });
     let mut pty = unsafe { Expecter::new(
-        "/app/target/debug/dock",
+        test_setup::test_bin().as_os_str(),
         &["shell"],
         TimeVal::seconds(10),
         &test.dir,
@@ -108,7 +107,7 @@ fn dock_runs_shell_by_default() {
         fs: &hashmap!{},
     });
     let mut pty = unsafe { Expecter::new(
-        "/app/target/debug/dock",
+        test_setup::test_bin().as_os_str(),
         &[],
         TimeVal::seconds(10),
         &test.dir,
@@ -145,7 +144,7 @@ fn shell_debug_flag() {
         fs: &hashmap!{},
     });
     let mut pty = unsafe { Expecter::new(
-        "/app/target/debug/dock",
+        test_setup::test_bin().as_os_str(),
         &["shell", test_name, "--debug"],
         TimeVal::seconds(10),
         &test.dir,
@@ -189,7 +188,7 @@ fn shell_overrides_entrypoint() {
         fs: &hashmap!{},
     });
     let mut pty = unsafe { Expecter::new(
-        "/app/target/debug/dock",
+        test_setup::test_bin().as_os_str(),
         &[],
         TimeVal::seconds(10),
         &test.dir,
@@ -229,7 +228,7 @@ fn shell_with_bash() {
         },
     );
     let mut pty = unsafe { Expecter::new(
-        "/app/target/debug/dock",
+        test_setup::test_bin().as_os_str(),
         &[],
         TimeVal::seconds(10),
         &test.dir,

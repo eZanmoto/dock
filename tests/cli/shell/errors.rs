@@ -24,7 +24,7 @@ fn shell_without_bash_fails() {
         },
     );
     let mut pty = unsafe { Expecter::new(
-        "/app/target/debug/dock",
+        test_setup::test_bin().as_os_str(),
         &[],
         TimeVal::seconds(10),
         &test.dir,

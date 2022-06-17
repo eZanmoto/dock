@@ -3,6 +3,7 @@
 // licence that can be found in the LICENCE file.
 
 use std::str;
+use std::ffi::OsStr;
 use std::string::ToString;
 
 use crate::nix::sys::time::TimeVal;
@@ -15,7 +16,8 @@ use super::Pty;
 // TODO Refactor this test into BDD-comment tests.
 fn sequence() {
     let timeout = TimeVal::seconds(3);
-    let mut pty = unsafe { Expecter::new("/bin/sh", &[], timeout, "/") };
+    let sh = OsStr::new("/bin/sh");
+    let mut pty = unsafe { Expecter::new(sh, &[], timeout, "/") };
 
     pty.expect("$ ");
 
@@ -43,7 +45,7 @@ pub struct Expecter {
 
 impl Expecter {
     pub unsafe fn new(
-        prog: &str,
+        prog: &OsStr,
         args: &[&str],
         timeout: TimeVal,
         current_dir: &str,

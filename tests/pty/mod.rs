@@ -4,6 +4,7 @@
 
 pub mod expecter;
 
+use std::ffi::OsStr;
 use std::os::unix::io::FromRawFd;
 use std::process::Child;
 use std::process::Command;
@@ -23,7 +24,7 @@ pub struct Pty {
 }
 
 impl Pty {
-    pub unsafe fn new(prog: &str, args: &[&str], current_dir: &str) -> Self {
+    pub unsafe fn new(prog: &OsStr, args: &[&str], current_dir: &str) -> Self {
         let OpenptyResult{master: controller_fd, slave: follower_fd} =
             pty::openpty(None, None)
                 .expect("couldn't open a new PTY");
