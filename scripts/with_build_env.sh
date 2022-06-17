@@ -16,7 +16,7 @@ bash scripts/docker_rbuild.sh \
         --file='build.Dockerfile' \
         scripts
 
-vol_name="$org.$proj.cargo_cache"
+vol_name="$org.$proj.cache.cargo"
 vol_dir='/cargo'
 
 docker run \
