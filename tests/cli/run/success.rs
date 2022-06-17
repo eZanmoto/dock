@@ -4,16 +4,23 @@
 
 use std::env;
 use std::path::Path;
+use std::process::ExitStatus;
 use std::str;
+use std::string::FromUtf8Error;
+use std::thread;
+use std::time::Duration;
 
 use crate::assert_run;
 use crate::docker;
+use crate::pty::Pty;
 use crate::test_setup;
 use crate::test_setup::Definition;
 use crate::test_setup::References;
 
 use crate::assert_cmd::assert::Assert;
 use crate::assert_cmd::Command as AssertCommand;
+use crate::nix::sys::time::TimeVal;
+use crate::nix::sys::time::TimeValLike;
 use crate::predicates::prelude::predicate::str as predicate_str;
 use crate::predicates::str::RegexPredicate;
 
@@ -952,4 +959,291 @@ fn run_with_build_args() {
         .stderr("")
         // (C)
         .stdout("test-value\n");
+}
+
+#[test]
+// Given (1) the dock file defines an environment called `<env>`
+//     AND (2) `<env>` has a `<script>` that checks if all streams are TTYs
+// When `run --tty <env> sh <script>` is run with a PTY
+// Then (A) the command returns 0
+fn run_in_pty_with_tty_is_tty() {
+    let test_name = "run_in_pty_with_tty_is_tty";
+    // (1)
+    let test = test_setup::assert_apply_with_dock_yaml(
+        indoc!{"
+            context: .
+        "},
+        &Definition{
+            name: test_name,
+            dockerfile_steps: indoc!{"
+                COPY check_ttys.sh /
+            "},
+            fs: &hashmap!{
+                // (2)
+                "check_ttys.sh" => indoc!{"
+                    exit_code=0
+                    die() {
+                        echo \"$1\" >&2
+                        exit_code=1
+                    }
+
+                    test -t 0 || die 'stdin is not a TTY'
+                    test -t 1 || die 'stdout is not a TTY'
+                    test -t 2 || die 'stderr is not a TTY'
+
+                    exit $exit_code
+                "},
+            },
+        },
+    );
+    let args = &["--tty", test_name, "sh", "/check_ttys.sh"];
+
+    let cmd_result = run_test_cmd_with_pty(&test.dir, args);
+
+    // (A)
+    cmd_result.code(0);
+}
+
+fn run_test_cmd_with_pty(root_test_dir: &str, args: &[&str]) -> PtyResult {
+    let prog = test_setup::test_bin();
+
+    let mut run_args = vec!["run"];
+    run_args.extend(args);
+
+    let mut pty =
+        unsafe { Pty::new(prog.as_os_str(), &run_args, root_test_dir) };
+
+    // FIXME Reading to the end of the stream before waiting for the child to
+    // exit could result in reads getting blocked; this should ideally be
+    // refactored to use Tokio for more reliable test failures.
+
+    let raw_output = read_to_end(&mut pty, Some(TimeVal::seconds(10)));
+
+    let exit_status;
+    let mut i = 0;
+    loop {
+        let maybe_exit_status = pty.try_wait()
+            .expect("couldn't try to wait for child");
+
+        if let Some(s) = maybe_exit_status {
+            exit_status = s;
+            break;
+        } else if i > 10 {
+            let output = str::from_utf8(&raw_output)
+                .expect("output wasn't valid UTF-8");
+            panic!("process didn't exit within timeout: {}", output);
+        }
+
+        thread::sleep(Duration::from_secs(1));
+
+        i += 1;
+    }
+
+    PtyResult{exit_status, output: raw_output}
+}
+
+// TODO Consider making `timeout` an attribute of `Pty` so that `Pty` can then
+// implement `Read`, and so the default implementation of `read_to_end` can be
+// used.
+fn read_to_end(pty: &mut Pty, timeout: Option<TimeVal>) -> Vec<u8> {
+    let mut buf = vec![];
+    let mut buf_used = 0;
+    loop {
+        if buf.len() - buf_used < BUF_MIN_SPACE {
+            buf.resize(buf.len() + BUF_MIN_SPACE, 0);
+        }
+
+        let n = pty.read(&mut buf[buf_used..], timeout)
+            .expect("couldn't read from PTY")
+            .expect("timeout occurred while reading from PTY");
+
+        buf_used += n;
+
+        if n == 0 {
+            break;
+        }
+    }
+    buf.resize(buf_used, 0);
+
+    buf
+}
+
+const BUF_MIN_SPACE: usize = 0x100;
+
+struct PtyResult {
+    exit_status: ExitStatus,
+    output: Vec<u8>,
+}
+
+impl PtyResult {
+    fn code(self, exp: i32) -> PtyResult {
+        if let Some(code) = self.exit_status.code() {
+            if code != exp {
+                self.fail(&format!("unexpected exit code: expected {}", exp));
+            }
+        } else {
+            let status = self.exit_status;
+            self.fail(&format!("couldn't extract exit code: {}", status));
+        }
+
+        self
+    }
+
+    fn fail(&self, msg: &str) -> ! {
+        let output = str::from_utf8(&self.output)
+            .expect("invalid UTF-8");
+
+        let prefixed_output = prefix_lines("[>] ", output)
+            .expect("invalid UTF-8");
+
+        let summary = format!(
+            "{}\n---\n{}\noutput:\n{}",
+            msg,
+            self.exit_status,
+            prefixed_output,
+        );
+
+        let indented_summary = prefix_lines("    ", &summary)
+            .expect("invalid UTF-8");
+
+        panic!("\n{}", indented_summary);
+    }
+}
+
+fn prefix_lines(prefix: &str, buf: &str) -> Result<String, FromUtf8Error> {
+    let s = Prefixer::new(prefix.as_bytes()).prefix(buf.as_bytes());
+
+    String::from_utf8(s)
+}
+
+// TODO Duplicated from `src/cmd_loggers.rs`.
+pub struct Prefixer<'a> {
+    prefix: &'a [u8],
+    due_prefix: bool,
+}
+
+// TODO Duplicated from `src/cmd_loggers.rs`.
+impl<'a> Prefixer<'a> {
+    pub fn new(prefix: &'a [u8]) -> Self {
+        Prefixer{prefix, due_prefix: true}
+    }
+
+    // TODO This is likely to inefficient due to the creation of new values
+    // instead of borrowing.
+    pub fn prefix(&mut self, buf: &[u8]) -> Vec<u8> {
+        if buf.is_empty() {
+            return vec![];
+        }
+
+        let mut prefixed_buf = vec![];
+
+        let mut first = true;
+        for bs in buf.split_inclusive(|b| is_newline(*b)) {
+            if !first || self.due_prefix {
+                prefixed_buf.extend(self.prefix);
+            }
+            first = false;
+
+            prefixed_buf.extend(bs);
+        }
+
+        let last = &buf[buf.len() - 1];
+        self.due_prefix = is_newline(*last);
+
+        prefixed_buf
+    }
+}
+
+// TODO Duplicated from `src/cmd_loggers.rs`.
+fn is_newline(b: u8) -> bool {
+    b == NEWLINE
+}
+
+// TODO Duplicated from `src/cmd_loggers.rs`.
+const NEWLINE: u8 = 0x0a;
+
+#[test]
+// Given (1) the dock file defines an environment called `<env>`
+//     AND (2) `<env>` has a `<script>` that checks if all streams are TTYs
+// When `run --tty <env> sh <script>` is run with a PTY
+// Then (A) the command returns 0
+fn run_in_pty_without_tty_is_not_tty() {
+    let test_name = "run_in_pty_without_tty_is_not_tty";
+    // (1)
+    let test = test_setup::assert_apply_with_dock_yaml(
+        indoc!{"
+            context: .
+        "},
+        &Definition{
+            name: test_name,
+            dockerfile_steps: indoc!{"
+                COPY check_ttys.sh /
+            "},
+            fs: &hashmap!{
+                // (2)
+                "check_ttys.sh" => indoc!{"
+                    exit_code=0
+                    die() {
+                        echo \"$1\" >&2
+                        exit_code=1
+                    }
+
+                    test -t 0 || die 'stdin is not a TTY'
+                    test -t 1 || die 'stdout is not a TTY'
+                    test -t 2 || die 'stderr is not a TTY'
+
+                    exit $exit_code
+                "},
+            },
+        },
+    );
+
+    let cmd_result =
+        run_test_cmd_with_pty(&test.dir, &[test_name, "sh", "/check_ttys.sh"]);
+
+    // (A)
+    cmd_result.code(1);
+}
+
+#[test]
+// Given (1) the dock file defines an environment called `<env>`
+//     AND (2) `<env>` has a `<script>` that checks if all streams are TTYs
+// When `run --tty <env> sh <script>` is run
+// Then (A) the command returns 0
+fn run_with_tty_is_tty() {
+    let test_name = "run_with_tty_is_tty";
+    // (1)
+    let test = test_setup::assert_apply_with_dock_yaml(
+        indoc!{"
+            context: .
+        "},
+        &Definition{
+            name: test_name,
+            dockerfile_steps: indoc!{"
+                COPY check_ttys.sh /
+            "},
+            fs: &hashmap!{
+                // (2)
+                "check_ttys.sh" => indoc!{"
+                    exit_code=0
+                    die() {
+                        echo \"$1\" >&2
+                        exit_code=1
+                    }
+
+                    test -t 0 || die 'stdin is not a TTY'
+                    test -t 1 || die 'stdout is not a TTY'
+                    test -t 2 || die 'stderr is not a TTY'
+
+                    exit $exit_code
+                "},
+            },
+        },
+    );
+
+    let cmd_result =
+        run_test_cmd(&test.dir, &["--tty", test_name, "sh", "/check_ttys.sh"]);
+
+    // (A)
+    cmd_result.code(0);
 }

@@ -5,10 +5,12 @@
 pub mod expecter;
 
 use std::ffi::OsStr;
+use std::io::Error as IoError;
 use std::io::ErrorKind;
 use std::os::unix::io::FromRawFd;
 use std::process::Child;
 use std::process::Command;
+use std::process::ExitStatus;
 use std::process::Stdio;
 use std::str;
 
@@ -79,6 +81,14 @@ impl Pty {
     {
         self.stream.write(buf, timeout)
     }
+
+    pub fn wait(&mut self) -> Result<ExitStatus, IoError> {
+        self.child.wait()
+    }
+
+    pub fn try_wait(&mut self) -> Result<Option<ExitStatus>, IoError> {
+        self.child.try_wait()
+    }
 }
 
 impl Drop for Pty {
@@ -109,7 +119,7 @@ impl Drop for Pty {
             panic!("couldn't kill the PTY process: {}", e);
         }
 
-        self.child.wait()
+        self.wait()
             .expect("couldn't wait for the PTY process");
     }
 }

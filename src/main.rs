@@ -33,15 +33,18 @@ use cmd_loggers::Prefixer;
 use cmd_loggers::PrefixingCmdLogger;
 use cmd_loggers::StdCmdLogger;
 use cmd_loggers::Stream;
+use run::Args;
 use run::CmdLoggers;
 use run::RebuildForRunError;
 use run::RunError;
 use run::SwitchingCmdLogger;
+use run::Tty;
 
 const TAGGED_IMG_FLAG: &str = "tagged-image";
-const DOCKER_ARGS_FLAG: &str = "docker-args";
+const COMMAND_ARGS_FLAG: &str = "docker-args";
 const ENV_FLAG: &str = "env";
 const DEBUG_FLAG: &str = "debug";
+const TTY_FLAG: &str = "tty";
 
 fn main() {
     let rebuild_about: &str =
@@ -74,7 +77,7 @@ fn main() {
                                 "The tagged name for the new image, in the \
                                  form `name:tag`.",
                             ),
-                        Arg::new(DOCKER_ARGS_FLAG)
+                        Arg::new(COMMAND_ARGS_FLAG)
                             .multiple_occurrences(true)
                             .help("Arguments to pass to `docker build`"),
                     ]),
@@ -86,12 +89,16 @@ fn main() {
                             .short('D')
                             .long(DEBUG_FLAG)
                             .help("Output debugging information"),
+                        Arg::new(TTY_FLAG)
+                            .short('T')
+                            .long(TTY_FLAG)
+                            .help("Allocate a pseudo-TTY"),
                         Arg::new(ENV_FLAG)
                             .required(true)
                             .help("The environment to run"),
-                        Arg::new(DOCKER_ARGS_FLAG)
+                        Arg::new(COMMAND_ARGS_FLAG)
                             .multiple_occurrences(true)
-                            .help("Arguments to pass to `docker build`"),
+                            .help("Arguments to pass to `docker run`"),
                     ]),
                 Command::new("shell")
                     .about(shell_about)
@@ -109,7 +116,7 @@ fn main() {
     match args.subcommand() {
         Some(("rebuild", sub_args)) => {
             let docker_args =
-                match sub_args.values_of(DOCKER_ARGS_FLAG) {
+                match sub_args.values_of(COMMAND_ARGS_FLAG) {
                     Some(vs) => vs.collect(),
                     None => vec![],
                 };
@@ -192,26 +199,33 @@ fn index_of_first_unsupported_flag(args: &[&str]) -> Option<usize> {
     None
 }
 
-fn run(dock_file_name: &str, args: &ArgMatches) -> i32 {
+fn run(dock_file_name: &str, arg_matches: &ArgMatches) -> i32 {
+    let mut tty = Tty::None;
+    if arg_matches.is_present(TTY_FLAG) {
+        tty = Tty::Attach;
+    }
+
     let cmd_args =
-        match args.values_of(DOCKER_ARGS_FLAG) {
+        match arg_matches.values_of(COMMAND_ARGS_FLAG) {
             Some(vs) => vs.collect(),
             None => vec![],
         };
 
-    handle_run(dock_file_name, Some(args), &[], &cmd_args, None)
+    let args = &Args{docker: &[], command: &cmd_args};
+
+    handle_run(dock_file_name, Some(arg_matches), args, &tty, None)
 }
 
 fn handle_run(
     dock_file_name: &str,
-    args: Option<&ArgMatches>,
-    flags: &[&str],
-    cmd_args: &[&str],
+    arg_matches: Option<&ArgMatches>,
+    args: &Args,
+    tty: &Tty,
     shell: Option<PathBuf>,
 ) -> i32 {
     let mut debug = false;
     let mut env_name = None;
-    if let Some(args) = args {
+    if let Some(args) = arg_matches {
         env_name = args.value_of(ENV_FLAG);
 
         if args.is_present(DEBUG_FLAG) {
@@ -249,8 +263,8 @@ fn handle_run(
         Stdio::inherit(),
         dock_file_name,
         env_name,
-        flags,
-        cmd_args,
+        args,
+        tty,
         shell,
     );
 
@@ -313,13 +327,12 @@ fn shell(dock_file_name: &str, args: Option<&ArgMatches>) -> i32 {
     handle_run(
         dock_file_name,
         args,
-        &[
-            "--interactive",
-            "--tty",
+        &Args{
             // TODO Add tests for `--network=host`.
-            "--network=host",
-        ],
-        &[],
+            docker: &["--interactive", "--network=host"],
+            command: &[],
+        },
+        &Tty::Attach,
         Some(Path::new("/bin/sh").to_path_buf()),
     )
 }

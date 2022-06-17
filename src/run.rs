@@ -134,8 +134,8 @@ pub fn run(
     stdin: Stdio,
     dock_file_name: &str,
     maybe_env_name: Option<&str>,
-    flags: &[&str],
-    cmd_args: &[&str],
+    args: &Args,
+    tty: &Tty,
     // TODO Remove the `shell` parameter to decouple this function from the
     // `shell` subcommand.
     shell: Option<PathBuf>,
@@ -182,6 +182,10 @@ pub fn run(
 
     let mut run_args = to_strings(&["run"]);
 
+    if let Tty::Attach = tty {
+        run_args.push(String::from("--tty"));
+    }
+
     if let Some(mut shell) = shell {
         if let Some(s) = &env.shell {
             shell = s.clone();
@@ -196,11 +200,11 @@ pub fn run(
 
     run_args.extend(main_run_args);
 
-    run_args.extend(to_strings(flags));
+    run_args.extend(to_strings(args.docker));
 
     run_args.push(target_img);
 
-    run_args.extend(to_strings(cmd_args));
+    run_args.extend(to_strings(args.command));
 
     // TODO Perform the side effects of `prepare_run_cache_volumes_args` here.
 
@@ -210,10 +214,23 @@ pub fn run(
             .iter()
             .map(OsStr::new)
             .collect();
+
+    // TODO Consider always using `exec`, or using `exec` if "debug" mode isn't
+    // being used.
     let exit_status = logging_process::run(logger, prog, &args, stdin)
         .context(DockerRunFailed)?;
 
     Ok(exit_status)
+}
+
+pub struct Args<'a> {
+    pub docker: &'a [&'a str],
+    pub command: &'a [&'a str],
+}
+
+pub enum Tty {
+    None,
+    Attach,
 }
 
 // TODO The following variants don't need to contain `dock_file_name` as a
