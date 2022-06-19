@@ -11,6 +11,7 @@ use crate::line_matcher;
 use crate::line_matcher::LineMatcher;
 use crate::test_setup;
 use crate::test_setup::Definition;
+use crate::test_setup::References;
 
 use crate::assert_cmd::assert::Assert as AssertOutput;
 use crate::assert_cmd::Command as AssertCommand;
@@ -130,17 +131,14 @@ pub fn assert_docker_build_stdout(stdout: &str) -> Option<DockerBuild> {
 fn rebuild_replaces_old_image() {
     let test_name = "rebuild_replaces_old_image";
     let mut test_dir_layout = hashmap!{"test.txt" => test_name};
-    let test = test_setup::assert_apply(&Definition{
+    // (1)
+    let (test, old_image_id) = rebuild_img(&Definition{
         name: test_name,
         dockerfile_steps: indoc!{"
             COPY test.txt /
         "},
         fs: &test_dir_layout,
     });
-    let mut cmd = new_test_cmd(test.dir, &test.image_tagged_name);
-    let build = assert_docker_build(cmd.assert(), &test.image_tagged_name);
-    // (1)
-    let old_image_id = build.img_id();
     // (2)
     assert_match_docker_run_stdout(
         &test.image_tagged_name,
@@ -160,23 +158,30 @@ fn rebuild_replaces_old_image() {
     // We rebuild the main test image, but we build it in the context of the
     // updated test directory. This allows us to validate the directory
     // contents for the purposes of debugging.
-    let mut updated_cmd =
-        new_test_cmd(updated_test.dir, &test.image_tagged_name);
+    let mut cmd = new_test_cmd(updated_test.dir, &test.image_tagged_name);
 
-    let cmd_result = updated_cmd.assert();
+    let cmd_result = cmd.assert();
 
     // (A) (B) (C)
     let new_build = assert_docker_build(cmd_result, &test.image_tagged_name);
     // (D)
     assert_ne!(new_build.img_id(), old_image_id);
     // (E)
-    assert!(!get_local_docker_image_ids().contains(&old_image_id.to_string()));
+    assert!(!get_local_docker_image_ids().contains(&old_image_id));
     // (F)
     assert_match_docker_run_stdout(
         &test.image_tagged_name,
         &["cat", "test.txt"],
         new_test_name,
     );
+}
+
+pub fn rebuild_img(test_defn: &Definition) -> (References, String) {
+    let test = test_setup::assert_apply(test_defn);
+    let mut cmd = new_test_cmd(test.dir.clone(), &test.image_tagged_name);
+    let build = assert_docker_build(cmd.assert(), &test.image_tagged_name);
+
+    (test, build.img_id().to_string())
 }
 
 fn get_local_docker_image_ids() -> Vec<String> {
@@ -198,7 +203,8 @@ fn get_local_docker_image_ids() -> Vec<String> {
 //     AND (D) the target image has the same ID
 fn rebuild_unchanged_context_doesnt_replace_image() {
     let test_name = "rebuild_unchanged_context_doesnt_replace_image";
-    let test = test_setup::assert_apply(&Definition{
+    // (1)
+    let (test, old_image_id) = rebuild_img(&Definition{
         name: test_name,
         dockerfile_steps: indoc!{"
             RUN touch test.txt
@@ -206,9 +212,6 @@ fn rebuild_unchanged_context_doesnt_replace_image() {
         fs: &hashmap!{},
     });
     let mut cmd = new_test_cmd(test.dir, &test.image_tagged_name);
-    let build = assert_docker_build(cmd.assert(), &test.image_tagged_name);
-    // (1)
-    let old_image_id = build.img_id();
 
     cmd.assert();
 
