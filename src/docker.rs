@@ -9,6 +9,7 @@ use std::io::Error as IoError;
 use std::process::Command;
 use std::process::ExitStatus;
 use std::process::Output;
+use std::process::Stdio;
 
 use snafu::ResultExt;
 use snafu::Snafu;
@@ -21,6 +22,7 @@ where
     let output =
         Command::new("docker")
             .args(args)
+            .stdin(Stdio::null())
             .output()
             .context(RunFailed)?;
 
