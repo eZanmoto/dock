@@ -15,6 +15,16 @@ and using the local user's ID within the container in order to speed up the
 development loop. See <https://seankelleher.ie/tags/docker/> for a series of
 articles discussing the ideas captured by this project.
 
+Overview
+--------
+
+* `dock run` runs once-off commands in a given container environment, and is
+  generally expected to be run in a CI (non-interactive) environment.
+* `dock shell` spawns a shell in a given container environment, and is generally
+  expected to be run locally (in an interactive environment).
+* `dock rebuild` is intended to be used like `docker build`, but removes the old
+  image associated with the given tag if the build is successful.
+
 Usage
 -----
 
