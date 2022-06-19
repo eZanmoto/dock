@@ -210,6 +210,8 @@ this scenario.
   `dock run` runs, as well as the output of those commands, as they're being
   run. This can be useful, for example, to see the output of the "rebuild" step
   as it happens, as this step is usually hidden unless an error occurs.
+* `--skip-rebuild`/`-R`: This will skip the rebuild step that otherwise
+  happens before the command is run.
 * `--tty`/`-T`: This will allocate a pseudo-TTY (PTY) for the container, so the
   command should behave as if it's running interactively.
 

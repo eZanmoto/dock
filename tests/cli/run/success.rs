@@ -3,6 +3,7 @@
 // licence that can be found in the LICENCE file.
 
 use std::env;
+use std::fs;
 use std::path::Path;
 use std::process::ExitStatus;
 use std::str;
@@ -1246,4 +1247,95 @@ fn run_with_tty_is_tty() {
 
     // (A)
     cmd_result.code(0);
+}
+
+#[test]
+// Given (1) the dock file defines an environment called `<env>`
+//     AND (2) a test file contains `"a"`
+//     AND (3) the target image for `<env>` is built with the test file
+//     AND (4) the test file is updated to contain `"b"`
+// When `run <env> cat /test.txt` is run
+// Then (A) the command is successful
+//     AND (B) the command STDERR is empty
+//     AND (C) the command STDOUT contains `"b"`
+fn run_without_skip_rebuild_rebuilds() {
+    let test_name = "run_without_skip_rebuild_rebuilds";
+    // (1)
+    let test = test_setup::assert_apply_with_dock_yaml(
+        indoc!{"
+            context: .
+        "},
+        &Definition{
+            name: test_name,
+            fs: &hashmap!{
+                // (2)
+                "test.txt" => "a",
+            },
+            dockerfile_steps: indoc!{"
+                COPY test.txt /
+            "},
+        },
+    );
+    // (3)
+    run_test_cmd(&test.dir, &[test_name, "true"]).code(0);
+    let test_file_path = format!("{}/test.txt", test.dir);
+    // (4)
+    fs::write(test_file_path, "b")
+        .expect("couldn't write Dockerfile");
+
+    let cmd_result = run_test_cmd(&test.dir, &[test_name, "cat", "/test.txt"]);
+
+    cmd_result
+        // (A)
+        .code(0)
+        // (B)
+        .stderr("")
+        // (C)
+        .stdout("b");
+}
+
+#[test]
+// Given (1) the dock file defines an environment called `<env>`
+//     AND (2) a test file contains `"a"`
+//     AND (3) the target image for `<env>` is built with the test file
+//     AND (4) the test file is updated to contain `"b"`
+// When `run --skip-rebuild <env> cat /test.txt` is run
+// Then (A) the command is successful
+//     AND (B) the command STDERR is empty
+//     AND (C) the command STDOUT contains `"a"`
+fn run_with_skip_rebuild_doesnt_rebuild() {
+    let test_name = "run_with_skip_rebuild_doesnt_rebuild";
+    // (1)
+    let test = test_setup::assert_apply_with_dock_yaml(
+        indoc!{"
+            context: .
+        "},
+        &Definition{
+            name: test_name,
+            fs: &hashmap!{
+                // (2)
+                "test.txt" => "a",
+            },
+            dockerfile_steps: indoc!{"
+                COPY test.txt /
+            "},
+        },
+    );
+    // (3)
+    run_test_cmd(&test.dir, &[test_name, "true"]).code(0);
+    let test_file_path = format!("{}/test.txt", test.dir);
+    // (4)
+    fs::write(test_file_path, "b")
+        .expect("couldn't write Dockerfile");
+    let args = &["--skip-rebuild", test_name, "cat", "/test.txt"];
+
+    let cmd_result = run_test_cmd(&test.dir, args);
+
+    cmd_result
+        // (A)
+        .code(0)
+        // (B)
+        .stderr("")
+        // (C)
+        .stdout("a");
 }

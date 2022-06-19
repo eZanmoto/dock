@@ -134,8 +134,8 @@ pub fn run(
     stdin: Stdio,
     dock_file_name: &str,
     maybe_env_name: Option<&str>,
+    rebuild_action: &RebuildAction,
     args: &Args,
-    tty: &Tty,
     // TODO Remove the `shell` parameter to decouple this function from the
     // `shell` subcommand.
     shell: Option<PathBuf>,
@@ -151,29 +151,31 @@ pub fn run(
     let target_img =
         tagged_image_name(&conf.organisation, &conf.project, env_name);
 
-    let env_context =
-        env.context
-            .as_ref()
-            .and_maybe_then(|path| RelPath::try_from(path.clone()))
-            .context(RelPathFromContextPathFailed)?;
+    if let RebuildAction::Run = rebuild_action {
+        let env_context =
+            env.context
+                .as_ref()
+                .and_maybe_then(|path| RelPath::try_from(path.clone()))
+                .context(RelPathFromContextPathFailed)?;
 
-    let build_args = env.build_args.clone().unwrap_or_default();
+        let build_args = env.build_args.clone().unwrap_or_default();
 
-    let build_args: Vec<&str> =
-        build_args
-            .iter()
-            .map(AsRef::as_ref)
-            .collect();
+        let build_args: Vec<&str> =
+            build_args
+                .iter()
+                .map(AsRef::as_ref)
+                .collect();
 
-    rebuild_for_run(
-        logger,
-        &dock_dir,
-        env_name,
-        &env_context,
-        &target_img,
-        &build_args,
-    )
-        .context(RebuildForRunFailed)?;
+        rebuild_for_run(
+            logger,
+            &dock_dir,
+            env_name,
+            &env_context,
+            &target_img,
+            &build_args,
+        )
+            .context(RebuildForRunFailed)?;
+    }
 
     logger.switch();
 
@@ -181,10 +183,6 @@ pub fn run(
         format!("{}.{}.{}", conf.organisation, conf.project, env_name);
 
     let mut run_args = to_strings(&["run"]);
-
-    if let Tty::Attach = tty {
-        run_args.push(String::from("--tty"));
-    }
 
     if let Some(mut shell) = shell {
         if let Some(s) = &env.shell {
@@ -228,9 +226,9 @@ pub struct Args<'a> {
     pub command: &'a [&'a str],
 }
 
-pub enum Tty {
-    None,
-    Attach,
+pub enum RebuildAction {
+    Run,
+    Skip,
 }
 
 // TODO The following variants don't need to contain `dock_file_name` as a

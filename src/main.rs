@@ -35,16 +35,17 @@ use cmd_loggers::StdCmdLogger;
 use cmd_loggers::Stream;
 use run::Args;
 use run::CmdLoggers;
+use run::RebuildAction;
 use run::RebuildForRunError;
 use run::RunError;
 use run::SwitchingCmdLogger;
-use run::Tty;
 
 const TAGGED_IMG_FLAG: &str = "tagged-image";
 const COMMAND_ARGS_FLAG: &str = "docker-args";
 const ENV_FLAG: &str = "env";
 const DEBUG_FLAG: &str = "debug";
 const TTY_FLAG: &str = "tty";
+const SKIP_REBUILD_FLAG: &str = "skip-rebuild";
 
 fn main() {
     let rebuild_about: &str =
@@ -93,6 +94,10 @@ fn main() {
                             .short('T')
                             .long(TTY_FLAG)
                             .help("Allocate a pseudo-TTY"),
+                        Arg::new(SKIP_REBUILD_FLAG)
+                            .short('R')
+                            .long(SKIP_REBUILD_FLAG)
+                            .help("Don't rebuild before running"),
                         Arg::new(ENV_FLAG)
                             .required(true)
                             .help("The environment to run"),
@@ -107,12 +112,20 @@ fn main() {
                             .short('D')
                             .long(DEBUG_FLAG)
                             .help("Output debugging information"),
+                        Arg::new(SKIP_REBUILD_FLAG)
+                            .short('R')
+                            .long(SKIP_REBUILD_FLAG)
+                            .help("Don't rebuild before running"),
                         Arg::new(ENV_FLAG)
                             .help("The environment to run"),
                     ]),
             ])
             .get_matches();
 
+    handle_arg_matches(&args, dock_file_name);
+}
+
+fn handle_arg_matches(args: &ArgMatches, dock_file_name: &str) {
     match args.subcommand() {
         Some(("rebuild", sub_args)) => {
             let docker_args =
@@ -200,36 +213,40 @@ fn index_of_first_unsupported_flag(args: &[&str]) -> Option<usize> {
 }
 
 fn run(dock_file_name: &str, arg_matches: &ArgMatches) -> i32 {
-    let mut tty = Tty::None;
-    if arg_matches.is_present(TTY_FLAG) {
-        tty = Tty::Attach;
-    }
-
     let cmd_args =
         match arg_matches.values_of(COMMAND_ARGS_FLAG) {
             Some(vs) => vs.collect(),
             None => vec![],
         };
 
-    let args = &Args{docker: &[], command: &cmd_args};
+    let mut docker_args = vec![];
+    if arg_matches.is_present(TTY_FLAG) {
+        docker_args.push("--tty");
+    }
 
-    handle_run(dock_file_name, Some(arg_matches), args, &tty, None)
+    let args = &Args{docker: &docker_args, command: &cmd_args};
+
+    handle_run(dock_file_name, Some(arg_matches), args, None)
 }
 
 fn handle_run(
     dock_file_name: &str,
     arg_matches: Option<&ArgMatches>,
     args: &Args,
-    tty: &Tty,
     shell: Option<PathBuf>,
 ) -> i32 {
     let mut debug = false;
     let mut env_name = None;
+    let mut rebuild_action = RebuildAction::Run;
     if let Some(args) = arg_matches {
         env_name = args.value_of(ENV_FLAG);
 
         if args.is_present(DEBUG_FLAG) {
             debug = true;
+        }
+
+        if args.is_present(SKIP_REBUILD_FLAG) {
+            rebuild_action = RebuildAction::Skip;
         }
     }
 
@@ -263,8 +280,8 @@ fn handle_run(
         Stdio::inherit(),
         dock_file_name,
         env_name,
+        &rebuild_action,
         args,
-        tty,
         shell,
     );
 
@@ -329,10 +346,9 @@ fn shell(dock_file_name: &str, args: Option<&ArgMatches>) -> i32 {
         args,
         &Args{
             // TODO Add tests for `--network=host`.
-            docker: &["--interactive", "--network=host"],
+            docker: &["--interactive", "--tty", "--network=host"],
             command: &[],
         },
-        &Tty::Attach,
         Some(Path::new("/bin/sh").to_path_buf()),
     )
 }

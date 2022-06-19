@@ -519,3 +519,39 @@ fn invalid_environment_name() {
         // (B)
         .stderr(predicate_str::contains(env_name));
 }
+
+#[test]
+// Given (1) the dock file defines an empty environment called `<env>`
+//     AND (2) the target image doesn't exist
+// When `run --skip-rebuild <env> true` is run
+// Then (A) the command returns a non-zero exit code
+//     AND (B) the command STDERR contains an error message about the image
+//     AND (C) the command STDOUT is empty
+//     AND (D) the target image doesn't exist
+//     AND (E) no containers exist for the target image
+fn run_with_skip_rebuild_fails_if_no_image() {
+    let test_name = "run_with_skip_rebuild_fails_if_no_image";
+    // (1)
+    let test = test_setup::assert_apply_with_empty_dock_yaml(&Definition{
+        name: test_name,
+        dockerfile_steps: "",
+        fs: &hashmap!{},
+    });
+    // (2)
+    docker::assert_remove_image(&test.image_tagged_name);
+    let args = &["--skip-rebuild", test_name, "true"];
+
+    let cmd_result = success::run_test_cmd(&test.dir, args);
+
+    cmd_result
+        // (A)
+        .code(predicate::ne(0))
+        // (B)
+        .stderr(predicate_str::contains("Unable to find image"))
+        // (C)
+        .stdout("");
+    // (D)
+    docker::assert_image_doesnt_exist(&test.image_tagged_name);
+    // (E)
+    docker::assert_no_containers_from_image(&test.image_tagged_name);
+}
