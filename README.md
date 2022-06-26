@@ -92,7 +92,8 @@ environments:
   build: {}
 ```
 
-Running `dock run-in build make` will do the following, in order:
+Running `dock run-in build make` or `dock run-in build-env: make` (see "Extended
+environment flag", below) will do the following, in order:
 
 1. Rebuilds the Docker image `ezanmoto/dock.build` from a local
    `build.Dockerfile`, if it needs to be rebuilt.
@@ -246,6 +247,36 @@ default:
 * `--init`: This "ensures the usual responsibilities of an init system, such as
   reaping zombie processes, are performed inside the created container."
 
+#### Extended environment flag
+
+`dock run-in` allows providing the name of the environment with an `-env:`
+suffix. This is somewhat unconventional and may be considered inconsistent with
+the established conventions for the layout of UNIX commands and their arguments.
+Furthermore, it goes against the Pythonic principle that is adopted by many
+developers of having "one way to do it." While all of this is true, the
+practicality of the approach is that it may improve the readability of `dock`
+usage in scripts. Consider the following:
+
+    dock run-in build cargo build
+    dock run-in test.build sh -c 'npm i && npm run build'
+
+While this on its own may not be considered too unreadable, the readability may
+be improved with the `-env:` suffix, which highlights `test.build` as the name
+of an environment, and delineates between the "context" of the command (the part
+before the `:`), and the command to be run in the containerised environment:
+
+    dock run-in build-env: cargo build
+    dock run-in test.build-env: sh -c 'npm i && npm run build'
+
+Note that other approaches, like the use of line splitting in shell scripts, may
+be used to achieve equivalent results using more conventional means:
+
+    dock run-in build \
+        cargo build
+
+    dock run-in test.build \
+        sh -c 'npm i && npm run build'
+
 ### `dock shell`
 
 `dock shell` has the same behaviour as `dock run-in`, but instead of running a
@@ -276,8 +307,8 @@ environment by running the following:
 
 ### Building
 
-The project can be built locally using `cargo build --locked`, or can be built using
-Docker by running the following:
+The project can be built locally using `cargo build --locked`, or can be built
+using Docker by running the following:
 
     bash scripts/with_build_env.sh cargo build --locked
 

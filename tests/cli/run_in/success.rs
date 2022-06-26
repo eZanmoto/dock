@@ -129,7 +129,6 @@ fn run_in_returns_correct_exit_code() {
         dockerfile_steps: "",
         fs: &hashmap!{},
     });
-    // (2)
     docker::assert_remove_image(&test.image_tagged_name);
 
     let cmd_result =
@@ -1338,4 +1337,31 @@ fn run_in_with_skip_rebuild_doesnt_rebuild() {
         .stderr("")
         // (C)
         .stdout("a");
+}
+
+#[test]
+// Given (1) the dock file defines an empty environment called `<env>`
+// When `run-in <env>-env: echo hi` is run
+// Then (A) the command returns an exit code of 0
+//     AND (B) the command STDERR is empty
+//     AND (C) the command STDOUT contains 'hi'
+fn run_in_with_extended_env_flag() {
+    let test_name = "run_in_with_extended_env_flag";
+    // (1)
+    let test = test_setup::assert_apply_with_empty_dock_yaml(&Definition{
+        name: test_name,
+        dockerfile_steps: "",
+        fs: &hashmap!{},
+    });
+    let env_arg = &format!("{}-env:", test_name);
+
+    let cmd_result = run_test_cmd(&test.dir, &[env_arg, "echo", "hi"]);
+
+    cmd_result
+        // (A)
+        .code(0)
+        // (B)
+        .stderr("")
+        // (C)
+        .stdout("hi\n");
 }

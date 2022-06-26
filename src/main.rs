@@ -241,6 +241,12 @@ fn handle_run_in(
     if let Some(args) = arg_matches {
         env_name = args.value_of(ENV_FLAG);
 
+        if let Some(env) = env_name {
+            if let Some(e) = env.strip_suffix("-env:") {
+                env_name = Some(e);
+            }
+        }
+
         if args.is_present(DEBUG_FLAG) {
             debug = true;
         }
