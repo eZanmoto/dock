@@ -28,12 +28,12 @@ use crate::predicates::str::RegexPredicate;
 #[test]
 // Given (1) the dock file defines an empty environment called `<env>`
 //     AND (2) the target image defined by `<env>` doesn't exist
-// When `run <env> true` is run
+// When `run-in <env> true` is run
 // Then (A) the command is successful
 //     AND (B) the command STDERR is empty
 //     AND (C) the command STDOUT is empty
 //     AND (D) the target image exists
-fn run_creates_image_if_none() {
+fn run_in_creates_image_if_none() {
     let test_name = "run_creates_image_if_none";
     // (1)
     let test = test_setup::assert_apply_with_empty_dock_yaml(&Definition{
@@ -60,7 +60,7 @@ fn run_creates_image_if_none() {
 pub fn run_test_cmd(root_test_dir: &str, args: &[&str]) -> Assert {
     let mut cmd = AssertCommand::cargo_bin(env!("CARGO_PKG_NAME"))
         .expect("couldn't create command for package binary");
-    cmd.args(vec!["run"]);
+    cmd.args(vec!["run-in"]);
     cmd.args(args);
     cmd.current_dir(root_test_dir);
     cmd.env_clear();
@@ -78,12 +78,12 @@ const DOCK_HOSTPATHS_VAR_NAME: &str = "DOCK_HOSTPATHS";
 // Given (1) the dock file defines an empty environment called `<env>`
 //     AND (2) `<env>`'s Dockerfile creates a test file
 //     AND (3) the target image defined by `<env>` doesn't exist
-// When `run <env> cat test.txt` is run
+// When `run-in <env> cat test.txt` is run
 // Then (A) the command is successful
 //     AND (B) the command STDERR is empty
 //     AND (C) the command STDOUT contains the contents of the test file
 //     AND (D) the target image exists
-fn run_uses_correct_image() {
+fn run_in_uses_correct_image() {
     let test_name = "run_uses_correct_image";
     // (1)
     let test = test_setup::assert_apply_with_empty_dock_yaml(&Definition{
@@ -115,13 +115,13 @@ fn run_uses_correct_image() {
 
 #[test]
 // Given (1) the dock file defines an empty environment called `<env>`
-// When `run <env> sh -c 'exit 2'` is run
+// When `run-in <env> sh -c 'exit 2'` is run
 // Then (A) the command returns an exit code of 2
 //     AND (B) the command STDERR is empty
 //     AND (C) the command STDOUT is empty
 //     AND (D) the target image exists
 //     AND (E) no containers exist for the target image
-fn run_returns_correct_exit_code() {
+fn run_in_returns_correct_exit_code() {
     let test_name = "run_returns_correct_exit_code";
     // (1)
     let test = test_setup::assert_apply_with_empty_dock_yaml(&Definition{
@@ -153,7 +153,7 @@ fn run_returns_correct_exit_code() {
 //     AND (2) `<env>` uses the current directory as the context
 //     AND (3) the current directory contains `test.txt`
 //     AND (4) `<env>`'s Dockerfile copies `test.txt`
-// When `run <env> cat test.txt` is run
+// When `run-in <env> cat test.txt` is run
 // Then (A) the command is successful
 //     AND (B) the command STDERR is empty
 //     AND (C) the command STDOUT contains the contents of `test.txt`
@@ -195,7 +195,7 @@ fn build_with_project_directory_as_context() {
 //     AND (2) `<env>` uses the directory `dir` as the context
 //     AND (3) `dir` contains `test.txt`
 //     AND (4) `<env>`'s Dockerfile copies `test.txt`
-// When `run <env> cat test.txt` is run
+// When `run-in <env> cat test.txt` is run
 // Then (A) the command is successful
 //     AND (B) the command STDERR is empty
 //     AND (C) the command STDOUT contains the contents of `test.txt`
@@ -237,11 +237,11 @@ fn build_with_nested_directory_as_context() {
 //     AND (2) `<env>` uses the current directory as the context
 //     AND (3) the current directory contains `test.txt`
 //     AND (4) `<env>`'s Dockerfile copies `test.txt`
-// When `run <env> cat test.txt` is run in a sub-directory
+// When `run-in <env> cat test.txt` is run in a sub-directory
 // Then (A) the command is successful
 //     AND (B) the command STDERR is empty
 //     AND (C) the command STDOUT contains the contents of `test.txt`
-fn run_from_subdir() {
+fn run_in_from_subdir() {
     let test_name = "run_from_subdir";
     // (1)
     let test = test_setup::assert_apply_with_dock_yaml(
@@ -286,7 +286,7 @@ pub fn run_test_cmd_from_subdir(
 ) -> Assert {
     let mut cmd = AssertCommand::cargo_bin(env!("CARGO_PKG_NAME"))
         .expect("couldn't create command for package binary");
-    cmd.args(vec!["run"]);
+    cmd.args(vec!["run-in"]);
     cmd.args(args);
 
     let mut p = Path::new(&root_test_dir).to_path_buf();
@@ -302,11 +302,11 @@ pub fn run_test_cmd_from_subdir(
 // Given (1) the dock file defines an environment called `<env>`
 //     AND (2) the container runs as root by default
 //     AND (3) the local user doesn't have user ID 0
-// When `run <env> id -u` is run
+// When `run-in <env> id -u` is run
 // Then (A) the command is successful
 //     AND (B) the command STDERR is empty
 //     AND (C) the command STDOUT contains `0`
-fn run_without_local_user() {
+fn run_in_without_local_user() {
     let test_name = "run_without_local_user";
     // (1)
     let test = test_setup::assert_apply_with_empty_dock_yaml(&Definition{
@@ -337,11 +337,11 @@ fn run_without_local_user() {
 // Given (1) the dock file defines an environment called `<env>`
 //     AND (2) the container runs as root by default
 //     AND (3) the local user doesn't have group ID 0
-// When `run <env> id -u` is run
+// When `run-in <env> id -u` is run
 // Then (A) the command is successful
 //     AND (B) the command STDERR is empty
 //     AND (C) the command STDOUT contains `0`
-fn run_without_local_group() {
+fn run_in_without_local_group() {
     let test_name = "run_without_local_group";
     // (1)
     let test = test_setup::assert_apply_with_empty_dock_yaml(&Definition{
@@ -373,11 +373,11 @@ fn run_without_local_group() {
 //     AND (2) `<env>` enables `user`
 //     AND (3) the container runs as root by default
 //     AND (4) the local user has user ID `<user_id>`
-// When `run <env> id -u` is run
+// When `run-in <env> id -u` is run
 // Then (A) the command is successful
 //     AND (B) the command STDERR is empty
 //     AND (C) the command STDOUT contains `<user_id>`
-fn run_with_local_user() {
+fn run_in_with_local_user() {
     let test_name = "run_with_local_user";
     // (1)
     let test = test_setup::assert_apply_with_dock_yaml(
@@ -415,11 +415,11 @@ fn run_with_local_user() {
 //     AND (2) `<env>` enables `user` and `group`
 //     AND (3) the container runs as root by default
 //     AND (4) the local user has group ID `<group_id>`
-// When `run <env> id -g` is run
+// When `run-in <env> id -g` is run
 // Then (A) the command is successful
 //     AND (B) the command STDERR is empty
 //     AND (C) the command STDOUT contains `<group_id>`
-fn run_with_local_group() {
+fn run_in_with_local_group() {
     let test_name = "run_with_local_group";
     // (1)
     let test = test_setup::assert_apply_with_dock_yaml(
@@ -456,11 +456,11 @@ fn run_with_local_group() {
 #[test]
 // Given (1) the dock file defines an environment called `<env>`
 //     AND (2) `<env>` adds an `--env=X=a` and `--env=Y=b` argument
-// When `run <env> sh -c 'echo $X $Y'` is run
+// When `run-in <env> sh -c 'echo $X $Y'` is run
 // Then (A) the command is successful
 //     AND (B) the command STDERR is empty
 //     AND (C) the command STDOUT contains "a b"
-fn run_with_env_var() {
+fn run_in_with_env_var() {
     let test_name = "run_with_env_var";
     // (1)
     let test = test_setup::assert_apply_with_dock_yaml(
@@ -493,11 +493,11 @@ fn run_with_env_var() {
 #[test]
 // Given (1) the dock file defines an environment called `<env>`
 //     AND (2) `<env>` adds a `--user=1234` argument
-// When `run <env> id -u` is run
+// When `run-in <env> id -u` is run
 // Then (A) the command is successful
 //     AND (B) the command STDERR is empty
 //     AND (C) the command STDOUT contains "1234"
-fn run_with_specific_user() {
+fn run_in_with_specific_user() {
     let test_name = "run_with_specific_user";
     // (1)
     let test = test_setup::assert_apply_with_dock_yaml(
@@ -529,11 +529,11 @@ fn run_with_specific_user() {
 // Given (1) the dock file defines an environment called `<env>`
 //     AND (2) `<env>`'s Dockerfile installs a Docker client
 //     AND (3) `<env>` enables `nested_docker`
-// When `run <env> docker version` is run
+// When `run-in <env> docker version` is run
 // Then (A) the command is successful
 //     AND (B) the command STDERR is empty
 //     AND (C) the target image exists
-fn run_with_nested_docker() {
+fn run_in_with_nested_docker() {
     let test_name = "run_with_nested_docker";
     // (1)
     let test = assert_apply_with_dockerfile(&TestDefinition{
@@ -599,7 +599,7 @@ pub struct TestDefinition<'a> {
 // Given (1) the dock file defines an environment called `<env>`
 //     AND (2) `<env>` mounts the project directory to `/host`
 //     AND (3) the current directory contains `test.txt`
-// When `run <env> cat /host/test.txt` is run
+// When `run-in <env> cat /host/test.txt` is run
 // Then (A) the command is successful
 //     AND (B) the command STDERR is empty
 //     AND (C) the command STDOUT contains the contents of `test.txt`
@@ -639,7 +639,7 @@ fn mount_proj_dir() {
 // Given (1) the dock file defines an environment called `<env>`
 //     AND (2) `<env>` mounts `a/b` to `/host`
 //     AND (3) the subdirectory `a/b/c/d` contains `test.txt`
-// When `run <env> cat /host/c/d/test.txt` is run
+// When `run-in <env> cat /host/c/d/test.txt` is run
 // Then (A) the command is successful
 //     AND (B) the command STDERR is empty
 //     AND (C) the command STDOUT contains the contents of `test.txt`
@@ -679,7 +679,7 @@ fn mount_sub_dir() {
 // Given (1) the dock file defines an environment called `<env>`
 //     AND (2) `<env>` defines the workdir as `/a/b
 //     AND (3) the Dockerfile creates `test.txt` in `/a/b/c/d`
-// When `run <env> cat c/d/test.txt` is run
+// When `run-in <env> cat c/d/test.txt` is run
 // Then (A) the command is successful
 //     AND (B) the command STDERR is empty
 //     AND (C) the command STDOUT contains the contents of `test.txt`
@@ -721,7 +721,7 @@ fn workdir() {
 #[test]
 // Given (1) the dock file defines an environment called `<env>`
 //     AND (2) `<env>` defines an environment variable `TEST`
-// When `run <env> sh -c 'echo $TEST'` is run
+// When `run-in <env> sh -c 'echo $TEST'` is run
 // Then (A) the command is successful
 //     AND (B) the command STDERR is empty
 //     AND (C) the command STDOUT contains the contents of `TEST`
@@ -759,7 +759,7 @@ fn env_var() {
 //     AND (2) `<env>` defines `workdir` as `/a/b`
 //     AND (3) `<env>` enables `project_dir`
 //     AND (4) the current directory contains `test.txt`
-// When `run <env> cat /a/b/test.txt` is run
+// When `run-in <env> cat /a/b/test.txt` is run
 // Then (A) the command is successful
 //     AND (B) the command STDERR is empty
 //     AND (C) the command STDOUT contains the contents of `test.txt`
@@ -799,8 +799,8 @@ fn project_dir() {
 //     AND (2) `<env>` defines a cache volume called `test` at `/a/b`
 //     AND (3) the Dockerfile used by `<env>` puts a test file in `/`
 //     AND (4) the cache volume for `test` doesn't exist
-//     AND (5) `run <env> cp /test.txt /a/b` was run
-// When `run <env> cat /a/b/test.txt` is run
+//     AND (5) `run-in <env> cp /test.txt /a/b` was run
+// When `run-in <env> cat /a/b/test.txt` is run
 // Then (A) the command is successful
 //     AND (B) the command STDERR is empty
 //     AND (C) the command STDOUT contains the contents of `test.txt`
@@ -848,7 +848,7 @@ fn cache_volume() {
 //     AND (2) `<env>` defines a cache volume called `test` at `/a/b`
 //     AND (3) the Dockerfile used by `<env>` sets the user to non-root
 //     AND (4) the cache volume for `test` doesn't exist
-// When `run <env> touch /a/b/test.txt` is run
+// When `run-in <env> touch /a/b/test.txt` is run
 // Then (A) the command is successful
 fn cache_volume_has_open_permission() {
     let test_name = "cache_volume_has_open_permission";
@@ -881,7 +881,7 @@ fn cache_volume_has_open_permission() {
 
 #[test]
 // Given (1) the dock file defines an empty environment called `<env>`
-// When `run --debug <env> echo hello` is run
+// When `run-in --debug <env> echo hello` is run
 // Then (A) the command is successful
 //     AND (B) the command STDERR is empty
 //     AND (C) the command STDOUT includes debugging output
@@ -926,11 +926,11 @@ pub fn predicate_match(s: &str) -> RegexPredicate {
 // Given (1) the dock file defines an environment called `<env>`
 //     AND (2) `<env>` adds a `--build-arg` build argument for `TEST_VALUE`
 //     AND (3) `<env>`'s Dockerfile saves `TEST_VALUE` in `/test.txt`
-// When `run <env> cat /test.txt` is run
+// When `run-in <env> cat /test.txt` is run
 // Then (A) the command is successful
 //     AND (B) the command STDERR is empty
 //     AND (C) the command STDOUT contains the value of `TEST_VALUE`
-fn run_with_build_args() {
+fn run_in_with_build_args() {
     let test_name = "run_with_build_args";
     // (1)
     let test = test_setup::assert_apply_with_dock_yaml(
@@ -965,9 +965,9 @@ fn run_with_build_args() {
 #[test]
 // Given (1) the dock file defines an environment called `<env>`
 //     AND (2) `<env>` has a `<script>` that checks if all streams are TTYs
-// When `run --tty <env> sh <script>` is run with a PTY
+// When `run-in --tty <env> sh <script>` is run with a PTY
 // Then (A) the command returns 0
-fn run_in_pty_with_tty_is_tty() {
+fn run_in_in_pty_with_tty_is_tty() {
     let test_name = "run_in_pty_with_tty_is_tty";
     // (1)
     let test = test_setup::assert_apply_with_dock_yaml(
@@ -1008,7 +1008,7 @@ fn run_in_pty_with_tty_is_tty() {
 fn run_test_cmd_with_pty(root_test_dir: &str, args: &[&str]) -> PtyResult {
     let prog = test_setup::test_bin();
 
-    let mut run_args = vec!["run"];
+    let mut run_args = vec!["run-in"];
     run_args.extend(args);
 
     let mut pty =
@@ -1166,9 +1166,9 @@ const NEWLINE: u8 = 0x0a;
 #[test]
 // Given (1) the dock file defines an environment called `<env>`
 //     AND (2) `<env>` has a `<script>` that checks if all streams are TTYs
-// When `run --tty <env> sh <script>` is run with a PTY
+// When `run-in --tty <env> sh <script>` is run with a PTY
 // Then (A) the command returns 0
-fn run_in_pty_without_tty_is_not_tty() {
+fn run_in_in_pty_without_tty_is_not_tty() {
     let test_name = "run_in_pty_without_tty_is_not_tty";
     // (1)
     let test = test_setup::assert_apply_with_dock_yaml(
@@ -1209,9 +1209,9 @@ fn run_in_pty_without_tty_is_not_tty() {
 #[test]
 // Given (1) the dock file defines an environment called `<env>`
 //     AND (2) `<env>` has a `<script>` that checks if all streams are TTYs
-// When `run --tty <env> sh <script>` is run
+// When `run-in --tty <env> sh <script>` is run
 // Then (A) the command returns 0
-fn run_with_tty_is_tty() {
+fn run_in_with_tty_is_tty() {
     let test_name = "run_with_tty_is_tty";
     // (1)
     let test = test_setup::assert_apply_with_dock_yaml(
@@ -1254,11 +1254,11 @@ fn run_with_tty_is_tty() {
 //     AND (2) a test file contains `"a"`
 //     AND (3) the target image for `<env>` is built with the test file
 //     AND (4) the test file is updated to contain `"b"`
-// When `run <env> cat /test.txt` is run
+// When `run-in <env> cat /test.txt` is run
 // Then (A) the command is successful
 //     AND (B) the command STDERR is empty
 //     AND (C) the command STDOUT contains `"b"`
-fn run_without_skip_rebuild_rebuilds() {
+fn run_in_without_skip_rebuild_rebuilds() {
     let test_name = "run_without_skip_rebuild_rebuilds";
     // (1)
     let test = test_setup::assert_apply_with_dock_yaml(
@@ -1299,11 +1299,11 @@ fn run_without_skip_rebuild_rebuilds() {
 //     AND (2) a test file contains `"a"`
 //     AND (3) the target image for `<env>` is built with the test file
 //     AND (4) the test file is updated to contain `"b"`
-// When `run --skip-rebuild <env> cat /test.txt` is run
+// When `run-in --skip-rebuild <env> cat /test.txt` is run
 // Then (A) the command is successful
 //     AND (B) the command STDERR is empty
 //     AND (C) the command STDOUT contains `"a"`
-fn run_with_skip_rebuild_doesnt_rebuild() {
+fn run_in_with_skip_rebuild_doesnt_rebuild() {
     let test_name = "run_with_skip_rebuild_doesnt_rebuild";
     // (1)
     let test = test_setup::assert_apply_with_dock_yaml(

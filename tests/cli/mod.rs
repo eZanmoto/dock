@@ -3,5 +3,5 @@
 // licence that can be found in the LICENCE file.
 
 pub mod rebuild;
-mod run;
+mod run_in;
 mod shell;

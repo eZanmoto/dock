@@ -25,7 +25,7 @@ mod fs;
 mod logging_process;
 mod option;
 mod rebuild;
-mod run;
+mod run_in;
 mod trie;
 
 use cmd_loggers::CapturingCmdLogger;
@@ -33,12 +33,12 @@ use cmd_loggers::Prefixer;
 use cmd_loggers::PrefixingCmdLogger;
 use cmd_loggers::StdCmdLogger;
 use cmd_loggers::Stream;
-use run::Args;
-use run::CmdLoggers;
-use run::RebuildAction;
-use run::RebuildForRunError;
-use run::RunError;
-use run::SwitchingCmdLogger;
+use run_in::Args;
+use run_in::CmdLoggers;
+use run_in::RebuildAction;
+use run_in::RebuildForRunInError;
+use run_in::RunInError;
+use run_in::SwitchingCmdLogger;
 
 const TAGGED_IMG_FLAG: &str = "tagged-image";
 const COMMAND_ARGS_FLAG: &str = "docker-args";
@@ -82,7 +82,7 @@ fn main() {
                             .multiple_occurrences(true)
                             .help("Arguments to pass to `docker build`"),
                     ]),
-                Command::new("run")
+                Command::new("run-in")
                     .trailing_var_arg(true)
                     .about(run_about)
                     .args(&[
@@ -138,8 +138,8 @@ fn handle_arg_matches(args: &ArgMatches, dock_file_name: &str) {
             let exit_code = rebuild(target_img, &docker_args);
             process::exit(exit_code);
         },
-        Some(("run", sub_args)) => {
-            let exit_code = run(dock_file_name, sub_args);
+        Some(("run-in", sub_args)) => {
+            let exit_code = run_in(dock_file_name, sub_args);
             process::exit(exit_code);
         },
         Some(("shell", sub_args)) => {
@@ -212,7 +212,7 @@ fn index_of_first_unsupported_flag(args: &[&str]) -> Option<usize> {
     None
 }
 
-fn run(dock_file_name: &str, arg_matches: &ArgMatches) -> i32 {
+fn run_in(dock_file_name: &str, arg_matches: &ArgMatches) -> i32 {
     let cmd_args =
         match arg_matches.values_of(COMMAND_ARGS_FLAG) {
             Some(vs) => vs.collect(),
@@ -226,10 +226,10 @@ fn run(dock_file_name: &str, arg_matches: &ArgMatches) -> i32 {
 
     let args = &Args{docker: &docker_args, command: &cmd_args};
 
-    handle_run(dock_file_name, Some(arg_matches), args, None)
+    handle_run_in(dock_file_name, Some(arg_matches), args, None)
 }
 
-fn handle_run(
+fn handle_run_in(
     dock_file_name: &str,
     arg_matches: Option<&ArgMatches>,
     args: &Args,
@@ -272,7 +272,7 @@ fn handle_run(
         };
 
     let mut logger = SwitchingCmdLogger::new(loggers);
-    let result = run::run(
+    let result = run_in::run_in(
         &mut logger,
         // TODO We would ideally lock and pass the `stdio` for the current
         // process but this requires unsafe file descriptor use and makes this
@@ -294,8 +294,8 @@ fn handle_run(
         Err(err) => {
             match (err, logger.loggers) {
                 (
-                    RunError::RebuildForRunFailed{
-                        source: RebuildForRunError::RebuildUnsuccessful{..},
+                    RunInError::RebuildForRunInFailed{
+                        source: RebuildForRunInError::RebuildUnsuccessful{..},
                     },
                     CmdLoggers::Streaming{capturing, ..},
                 ) => {
@@ -341,7 +341,7 @@ fn write_streams(
 }
 
 fn shell(dock_file_name: &str, args: Option<&ArgMatches>) -> i32 {
-    handle_run(
+    handle_run_in(
         dock_file_name,
         args,
         &Args{

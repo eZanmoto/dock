@@ -17,12 +17,12 @@ use crate::predicates::prelude::predicate::str as predicate_str;
 #[test]
 // Given (1) the dock file defines an empty environment called `<env>`
 //     AND (2) the Dockerfile used by `<env>` has a step that fails
-// When `run <env> true` is run
+// When `run-in <env> true` is run
 // Then (A) the command returns an exit code of 1
 //     AND (B) the command STDERR contains the `docker build` STDERR
 //     AND (C) the command STDOUT contains the `docker build` STDOUT
 //     AND (D) the target image doesn't exist
-fn run_with_build_failure() {
+fn run_in_with_build_failure() {
     let test_name = "run_with_build_failure";
     // (1)
     let test = test_setup::assert_apply_with_empty_dock_yaml(&Definition{
@@ -56,13 +56,13 @@ fn run_with_build_failure() {
 
 #[test]
 // Given (1) the dock file defines an empty environment called `<env>`
-// When `run <env> cat /nonexistent` is run
+// When `run-in <env> cat /nonexistent` is run
 // Then (A) the command returns a non-zero exit code
 //     AND (B) the command STDERR contains the error message from `cat`
 //     AND (C) the command STDOUT is empty
 //     AND (D) the target image exists
 //     AND (E) no containers exist for the target image
-fn run_with_run_failure() {
+fn run_in_with_run_failure() {
     let test_name = "run_with_run_failure";
     // (1)
     let test = test_setup::assert_apply_with_empty_dock_yaml(&Definition{
@@ -94,7 +94,7 @@ fn run_with_run_failure() {
 //     AND (2) `<env>` uses the directory `dir` as the context
 //     AND (3) `dir` doesn't contain `test.txt`
 //     AND (4) `<env>`'s Dockerfile copies `test.txt`
-// When `run <env> true` is run
+// When `run-in <env> true` is run
 // Then (A) the command returns an exit code of 1
 //     AND (B) the command STDERR indicates that the copy failed
 //     AND (C) the target image doesn't exist
@@ -140,7 +140,7 @@ fn build_with_file_outside_context_directory() {
 #[test]
 // Given (1) the dock file defines an environment called `<env>`
 //     AND (2) the `<env>` context path starts with `..`
-// When `run <env> true` is run
+// When `run-in <env> true` is run
 // Then (A) the command returns an exit code of 1
 //     AND (B) the command STDERR indicates the invalid path
 //     AND (B) the command STDOUT is empty
@@ -182,7 +182,7 @@ fn context_starts_with_path_traversal() {
 #[test]
 // Given (1) the dock file defines an environment called `<env>`
 //     AND (2) the `<env>` context path contains a `..` component
-// When `run <env> true` is run
+// When `run-in <env> true` is run
 // Then (A) the command returns an exit code of 1
 //     AND (B) the command STDERR indicates the invalid path
 //     AND (B) the command STDOUT is empty
@@ -224,7 +224,7 @@ fn context_contains_path_traversal() {
 #[test]
 // Given (1) the dock file defines an environment called `<env>`
 //     AND (2) the `<env>` context path starts with `/`
-// When `run <env> true` is run
+// When `run-in <env> true` is run
 // Then (A) the command returns an exit code of 1
 //     AND (B) the command STDERR indicates the invalid path
 //     AND (B) the command STDOUT is empty
@@ -266,10 +266,10 @@ fn context_contains_absolute_path() {
 #[test]
 // Given (1) the dock file defines an environment called `<env>`
 //     AND (2) `<env>` enables `group`, but not `user`
-// When `run <env> id -g` is run
+// When `run-in <env> id -g` is run
 // Then (A) the command returns 1
 //     AND (B) the command STDERR highlights that `user` is required
-fn run_with_local_group_without_local_user() {
+fn run_in_with_local_group_without_local_user() {
     let test_name = "run_with_local_group_without_local_user";
     // (1)
     let test = test_setup::assert_apply_with_dock_yaml(
@@ -300,11 +300,11 @@ fn run_with_local_group_without_local_user() {
 // Given (1) the dock file defines an environment called `<env>`
 //     AND (2) `<env>`'s Dockerfile installs a Docker client
 //     AND (3) `<env>` doesn't enable `nested_docker`
-// When `run <env> docker version` is run
+// When `run-in <env> docker version` is run
 // Then (A) the command returns 1
 //     AND (B) the command STDERR contains "no such host"
 //     AND (C) the target image exists
-fn run_without_nested_docker() {
+fn run_in_without_nested_docker() {
     let test_name = "run_without_nested_docker";
     // (1)
     let test = success::assert_apply_with_dockerfile(&TestDefinition{
@@ -332,7 +332,7 @@ fn run_without_nested_docker() {
 // Given (1) the dock file defines an environment called `<env>`
 //     AND (2) `<env>` enables `project_dir`
 //     AND (3) `<env>` doesn't define `workdir`
-// When `run <env> cat /a/b/test.txt` is run
+// When `run-in <env> cat /a/b/test.txt` is run
 // Then (A) the command returns an exit code of 1
 //     AND (B) the command STDERR contains "`workdir` is required"
 //     AND (C) the command STDOUT is empty
@@ -369,9 +369,9 @@ fn project_dir_without_workdir() {
 // Given (1) the dock file defines an environment called `<env>`
 //     AND (2) `<env>` defines a cache volume called `test` at `/a/b`
 //     AND (3) the Dockerfile used by `<env>` puts a test file in `/`
-//     AND (4) `run <env> cp /test.txt /a/b` was run
+//     AND (4) `run-in <env> cp /test.txt /a/b` was run
 //     AND (5) then the cache volume for `test` was deleted
-// When `run <env> cat /a/b/test.txt` is run
+// When `run-in <env> cat /a/b/test.txt` is run
 // Then (A) the command returns a non-zero exit code
 //     AND (B) the command STDERR contains the error message from `cat`
 //     AND (C) the command STDOUT is empty
@@ -421,7 +421,7 @@ fn removing_cache_volume_deletes_files() {
 //     AND (2) `<env>` defines a volume at `/a/b`
 //     AND (3) the Dockerfile used by `<env>` sets the user to non-root
 //     AND (4) the volume doesn't exist
-// When `run <env> touch /a/b/test.txt` is run
+// When `run-in <env> touch /a/b/test.txt` is run
 // Then (A) the command returns a non-zero exit code
 //     AND (B) the command STDERR contains the error message from `touch`
 //     AND (C) the command STDOUT is empty
@@ -467,7 +467,7 @@ fn manual_volume_has_root_permission() {
 
 #[test]
 // Given (1) the dock file specifies an unsupported `schema_version`
-// When `run <env> true` is run
+// When `run-in <env> true` is run
 // Then (A) the command returns an exit code of 1
 //     AND (B) the command STDERR contains "`workdir` is required"
 fn unsupported_schema_version() {
@@ -495,7 +495,7 @@ fn unsupported_schema_version() {
 
 #[test]
 // Given (1) the dock file specifies an environment with a capital letter
-// When `run <env> true` is run
+// When `run-in <env> true` is run
 // Then (A) the command returns an exit code of 1
 //     AND (B) the command STDERR contains the name of the environment
 fn invalid_environment_name() {
@@ -523,13 +523,13 @@ fn invalid_environment_name() {
 #[test]
 // Given (1) the dock file defines an empty environment called `<env>`
 //     AND (2) the target image doesn't exist
-// When `run --skip-rebuild <env> true` is run
+// When `run-in --skip-rebuild <env> true` is run
 // Then (A) the command returns a non-zero exit code
 //     AND (B) the command STDERR contains an error message about the image
 //     AND (C) the command STDOUT is empty
 //     AND (D) the target image doesn't exist
 //     AND (E) no containers exist for the target image
-fn run_with_skip_rebuild_fails_if_no_image() {
+fn run_in_with_skip_rebuild_fails_if_no_image() {
     let test_name = "run_with_skip_rebuild_fails_if_no_image";
     // (1)
     let test = test_setup::assert_apply_with_empty_dock_yaml(&Definition{

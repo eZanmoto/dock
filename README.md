@@ -11,7 +11,7 @@ An example usage would be when downloading a Rust project that has defined a
 `dock.yaml` and `build.Dockerfile`. Building such a project should be as easy as
 running the following command:
 
-    dock run build cargo build
+    dock run-in build cargo build
 
 Dock takes care of re-creating the build environment and all the required system
 dependencies using the `build.Dockerfile`, and runs `cargo build` in that
@@ -28,7 +28,7 @@ the ideas captured by this project.
 Overview
 --------
 
-* `dock run` runs once-off commands in a given container environment, and is
+* `dock run-in` runs once-off commands in a given container environment, and is
   generally expected to be run in a CI (non-interactive) environment.
 * `dock shell` spawns a shell in a given container environment, and is generally
   expected to be run locally (in an interactive environment).
@@ -75,11 +75,12 @@ used for repeated rebuilds of Docker images, without leaving unused images and
 containers behind. As such, the default behaviour of `dock rebuild` is to always
 remove intermediate containers regardless of the build result.
 
-### `dock run`
+### `dock run-in`
 
-`dock run` runs a shell command in a Docker "environment". For example, consider
-the following definition of a project whose build environment is defined in a
-separate `build.Dockerfile`, and which also has the following `dock.yaml`:
+`dock run-in` runs a shell command in a Docker "environment". For example,
+consider the following definition of a project whose build environment is
+defined in a separate `build.Dockerfile`, and which also has the following
+`dock.yaml`:
 
 ``` yaml
 schema_version: '0.1'
@@ -91,7 +92,7 @@ environments:
   build: {}
 ```
 
-Running `dock run build make` will do the following, in order:
+Running `dock run-in build make` will do the following, in order:
 
 1. Rebuilds the Docker image `ezanmoto/dock.build` from a local
    `build.Dockerfile`, if it needs to be rebuilt.
@@ -227,10 +228,10 @@ this scenario.
 
 #### Flags
 
-* `--debug`/`-D`: This will cause `dock run` to output the Docker commands that
-  `dock run` runs, as well as the output of those commands, as they're being
-  run. This can be useful, for example, to see the output of the "rebuild" step
-  as it happens, as this step is usually hidden unless an error occurs.
+* `--debug`/`-D`: This will cause `dock run-in` to output the Docker commands
+  that `dock run-in` runs, as well as the output of those commands, as they're
+  being run. This can be useful, for example, to see the output of the "rebuild"
+  step as it happens, as this step is usually hidden unless an error occurs.
 * `--skip-rebuild`/`-R`: This will skip the rebuild step that otherwise
   happens before the command is run.
 * `--tty`/`-T`: This will allocate a pseudo-TTY (PTY) for the container, so the
@@ -238,7 +239,8 @@ this scenario.
 
 #### Default flags
 
-Behind the scenes, `dock run` passes the following to `docker run` by default:
+Behind the scenes, `dock run-in` passes the following to `docker run` by
+default:
 
 * `--rm`: This ensures that containers are destroyed once they finish executing.
 * `--init`: This "ensures the usual responsibilities of an init system, such as
@@ -246,7 +248,7 @@ Behind the scenes, `dock run` passes the following to `docker run` by default:
 
 ### `dock shell`
 
-`dock shell` has the same behaviour as `dock run`, but instead of running a
+`dock shell` has the same behaviour as `dock run-in`, but instead of running a
 single command, spawns a new shell in the Docker "environment". If a `dock.yaml`
 file contains an environment called `build`, then `dock shell build` will start
 a new shell in that environment. `dock shell` on its own will start a shell in
@@ -255,7 +257,7 @@ the `default_shell_env`.
 #### Default flags
 
 Behind the scenes, `dock shell` passes the same default flags to `docker run` as
-`dock run`, and also passes the following:
+`dock run-in`, and also passes the following:
 
 * `--network=host`: This allows services run inside the container to be accessed
   as if they were running on the host.

@@ -129,7 +129,7 @@ impl<'a> CmdLoggers<'a> {
     }
 }
 
-pub fn run(
+pub fn run_in(
     logger: &mut SwitchingCmdLogger,
     stdin: Stdio,
     dock_file_name: &str,
@@ -139,7 +139,7 @@ pub fn run(
     // TODO Remove the `shell` parameter to decouple this function from the
     // `shell` subcommand.
     shell: Option<PathBuf>,
-) -> Result<ExitStatus, RunError> {
+) -> Result<ExitStatus, RunInError> {
     let (dock_dir, conf) = find_and_parse_dock_config(dock_file_name)
         .context(FindAndParseDockConfigFailed{dock_file_name})?;
 
@@ -166,7 +166,7 @@ pub fn run(
                 .map(AsRef::as_ref)
                 .collect();
 
-        rebuild_for_run(
+        rebuild_for_run_in(
             logger,
             &dock_dir,
             env_name,
@@ -174,7 +174,7 @@ pub fn run(
             &target_img,
             &build_args,
         )
-            .context(RebuildForRunFailed)?;
+            .context(RebuildForRunInFailed)?;
     }
 
     logger.switch();
@@ -193,8 +193,8 @@ pub fn run(
     }
 
     let main_run_args =
-        prepare_run_args(env, &dock_dir, &vol_name_prefix, &target_img)
-            .context(PrepareRunArgsFailed)?;
+        prepare_run_in_args(env, &dock_dir, &vol_name_prefix, &target_img)
+            .context(PrepareRunInArgsFailed)?;
 
     run_args.extend(main_run_args);
 
@@ -235,7 +235,7 @@ pub enum RebuildAction {
 // field because it's passed to the `run_with_extra_prefix_args`, but we
 // include it for now for simplicity.
 #[derive(Debug, Snafu)]
-pub enum RunError {
+pub enum RunInError {
     #[snafu(display(
         "Couldn't find and parse '{}': {}",
         dock_file_name,
@@ -253,12 +253,12 @@ pub enum RunError {
     ))]
     RelPathFromContextPathFailed{source: NewRelPathError},
     #[snafu(display("{}", source))]
-    RebuildForRunFailed{source: RebuildForRunError},
+    RebuildForRunInFailed{source: RebuildForRunInError},
     #[snafu(display(
         "Couldn't prepare arguments for `docker run`: {}",
         source,
     ))]
-    PrepareRunArgsFailed{source: PrepareRunArgsError},
+    PrepareRunInArgsFailed{source: PrepareRunInArgsError},
     #[snafu(display("`docker run` failed: {}", source))]
     DockerRunFailed{source: LoggingProcessRunError},
 }
@@ -375,7 +375,7 @@ pub enum ParseDockConfigError {
     ParseSchemaFailed{source: SerdeYamlError},
 }
 
-fn rebuild_for_run(
+fn rebuild_for_run_in(
     logger: &mut dyn CommandLogger,
     dock_dir: &AbsPath,
     env_name: &str,
@@ -383,7 +383,7 @@ fn rebuild_for_run(
     img: &str,
     args: &[&str],
 )
-    -> Result<(), RebuildForRunError>
+    -> Result<(), RebuildForRunInError>
 {
     // TODO Consider the fact that `env_name` may contain `/`; it may be worth
     // adding an `EnvName` type with validation in its constructor.
@@ -405,7 +405,7 @@ fn rebuild_for_run(
     if !status.success() {
         let img = img.to_string();
 
-        return Err(RebuildForRunError::RebuildUnsuccessful{img});
+        return Err(RebuildForRunInError::RebuildUnsuccessful{img});
     }
 
     // We ignore the status code returned "by the build step" because there
@@ -416,7 +416,7 @@ fn rebuild_for_run(
 
 #[allow(clippy::enum_variant_names)]
 #[derive(Debug, Snafu)]
-pub enum RebuildForRunError {
+pub enum RebuildForRunInError {
     #[snafu(display("Couldn't prepare input for `dock rebuild`: {}", source))]
     NewDockerRebuildInputFailed{source: NewDockerContextError},
     #[snafu(display("Couldn't rebuild '{}': {}", img, source))]
@@ -461,13 +461,13 @@ pub enum NewDockerContextError {
     OpenDockerfileFailed{source: IoError, path: AbsPath},
 }
 
-fn prepare_run_args(
+fn prepare_run_in_args(
     env: &DockEnvironmentConfig,
     dock_dir: &AbsPath,
     vol_name_prefix: &str,
     target_img: &str,
 )
-    -> Result<Vec<String>, PrepareRunArgsError>
+    -> Result<Vec<String>, PrepareRunInArgsError>
 {
     // We pass `--init` in order to forward signals and reap processes. TODO
     // Give concrete examples to justify providing `--init`.
@@ -480,7 +480,7 @@ fn prepare_run_args(
             vol_name_prefix,
             target_img,
         )
-            .context(PrepareRunCacheVolumesArgsFailed)?;
+            .context(PrepareRunInCacheVolumesArgsFailed)?;
 
         run_args.extend(args);
     }
@@ -507,7 +507,7 @@ fn prepare_run_args(
             &cur_hostpaths,
             &env.workdir,
         )
-            .context(PrepareRunMountLocalArgsFailed)?;
+            .context(PrepareRunInMountLocalArgsFailed)?;
 
         run_args.extend(args);
     }
@@ -527,7 +527,7 @@ fn prepare_run_args(
 
         let args =
             prepare_run_mount_args(dock_dir, &parsed_mounts, &cur_hostpaths)
-                .context(PrepareRunMountArgsFailed)?;
+                .context(PrepareRunInMountArgsFailed)?;
 
         run_args.extend(args);
     }
@@ -539,17 +539,19 @@ const DOCKER_SOCK_PATH: &str = "/var/run/docker.sock";
 
 #[allow(clippy::enum_variant_names)]
 #[derive(Debug, Snafu)]
-pub enum PrepareRunArgsError {
+pub enum PrepareRunInArgsError {
     #[snafu(display(
         "Couldn't prepare cache volume arguments for `docker run`: {}",
         source,
     ))]
-    PrepareRunCacheVolumesArgsFailed{source: PrepareRunCacheVolumesArgsError},
+    PrepareRunInCacheVolumesArgsFailed{
+        source: PrepareRunInCacheVolumesArgsError,
+    },
     #[snafu(display(
         "Couldn't prepare \"local mount\" arguments for `docker run`: {}",
         source,
     ))]
-    PrepareRunMountLocalArgsFailed{source: PrepareRunMountLocalArgsError},
+    PrepareRunInMountLocalArgsFailed{source: PrepareRunInMountLocalArgsError},
     #[snafu(display(
         "Couldn't parse `mount` configuration for '{}' -> '{}' mapping: {}",
         source,
@@ -567,7 +569,7 @@ pub enum PrepareRunArgsError {
         "Couldn't prepare \"mount\" arguments for `docker run`: {}",
         source,
     ))]
-    PrepareRunMountArgsFailed{source: PrepareRunMountArgsError},
+    PrepareRunInMountArgsFailed{source: PrepareRunInMountArgsError},
 }
 
 // TODO This method doesn't just prepare the cache volume arguments for the
@@ -579,7 +581,7 @@ fn prepare_run_cache_volumes_args(
     vol_name_prefix: &str,
     target_img: &str,
 )
-    -> Result<Vec<String>, PrepareRunCacheVolumesArgsError>
+    -> Result<Vec<String>, PrepareRunInCacheVolumesArgsError>
 {
     let mut args = vec![];
 
@@ -621,7 +623,7 @@ fn prepare_run_cache_volumes_args(
 
 #[allow(clippy::enum_variant_names)]
 #[derive(Debug, Snafu)]
-pub enum PrepareRunCacheVolumesArgsError {
+pub enum PrepareRunInCacheVolumesArgsError {
     #[snafu(display(
         "Couldn't convert the cache volume directory to an absolute path: {}",
         source,
@@ -642,7 +644,7 @@ fn prepare_run_mount_local_args(
     cur_hostpaths: &Option<Hostpaths>,
     workdir: &Option<String>,
 )
-    -> Result<Vec<String>, PrepareRunMountLocalArgsError>
+    -> Result<Vec<String>, PrepareRunInMountLocalArgsError>
 {
     let mut args = vec![];
 
@@ -661,7 +663,7 @@ fn prepare_run_mount_local_args(
             args.extend(to_strings(&["--user", user_id.trim_end()]));
         }
     } else if mount_local.contains(&DockEnvironmentMountLocalConfig::Group) {
-        return Err(PrepareRunMountLocalArgsError::GroupMountedWithoutUser);
+        return Err(PrepareRunInMountLocalArgsError::GroupMountedWithoutUser);
     }
 
     if mount_local.contains(&DockEnvironmentMountLocalConfig::Docker) {
@@ -700,7 +702,7 @@ fn prepare_run_mount_local_args(
 
 #[allow(clippy::enum_variant_names)]
 #[derive(Debug, Snafu)]
-pub enum PrepareRunMountLocalArgsError {
+pub enum PrepareRunInMountLocalArgsError {
     #[snafu(display("Couldn't get user ID for the active user: {}", source))]
     GetUserIdFailed{source: RunCommandError},
     #[snafu(display("Couldn't get group ID for the active user: {}", source))]
@@ -779,7 +781,7 @@ fn prepare_run_mount_args(
     mounts: &[(RelPath, &PathBuf)],
     cur_hostpaths: &Option<Hostpaths>,
 )
-    -> Result<Vec<String>, PrepareRunMountArgsError>
+    -> Result<Vec<String>, PrepareRunInMountArgsError>
 {
     let mut hostpath_cli_args = vec![];
     for (rel_outer_path, inner_path) in mounts {
@@ -804,9 +806,10 @@ fn prepare_run_mount_args(
                     arg
                 },
                 Err(path) => {
-                    let e = PrepareRunMountArgsError::InnerPathAsCliArgFailed{
-                        path,
-                    };
+                    let e =
+                        PrepareRunInMountArgsError::InnerPathAsCliArgFailed{
+                            path,
+                        };
 
                     return Err(e);
                 },
@@ -838,7 +841,7 @@ fn prepare_run_mount_args(
 }
 
 #[derive(Debug, Snafu)]
-pub enum PrepareRunMountArgsError {
+pub enum PrepareRunInMountArgsError {
     #[snafu(display(
         "No route to the path '{}' was found on the host",
         attempted_path.display_lossy(),
