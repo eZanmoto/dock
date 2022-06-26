@@ -1,19 +1,29 @@
-`dock`
-======
+Dock
+====
 
 About
 -----
 
-`dock` defines a number of sub-commands to help use Docker containers as
+Dock defines a number of sub-commands to help use Docker containers as
 environments.
 
-An example of this is to define a Docker container to use as a build
-environment. When implemented, `dock run build <command>` can be used to run
-`command` in the context of a build environment defined as a Docker container,
-but with quality-of-life shortcuts such as easy mounting of the local project
-and using the local user's ID within the container in order to speed up the
-development loop. See <https://seankelleher.ie/tags/docker/> for a series of
-articles discussing the ideas captured by this project.
+An example usage would be when downloading a Rust project that has defined a
+`dock.yaml` and `build.Dockerfile`. Building such a project should be as easy as
+running the following command:
+
+    dock run build cargo build
+
+Dock takes care of re-creating the build environment and all the required system
+dependencies using the `build.Dockerfile`, and runs `cargo build` in that
+environment. Using directory and user "mounting" (configured using `dock.yaml`),
+the artifacts built inside the container should be available as if they had been
+built on the host, and with the expected user permissions (i.e. the created
+files will be owned by the local user, rather than `root`). Dedicated cache
+volumes and other utilities are also available in order to speed up the
+development loop.
+
+See <https://seankelleher.ie/tags/docker/> for a series of articles discussing
+the ideas captured by this project.
 
 Overview
 --------
@@ -24,6 +34,17 @@ Overview
   expected to be run locally (in an interactive environment).
 * `dock rebuild` is intended to be used like `docker build`, but removes the old
   image associated with the given tag if the build is successful.
+
+Installation
+------------
+
+The simplest way to install Dock at present is to build a release version of
+this project using the steps outlined in the "Release" section, and then add it
+to your `PATH`:
+
+    ARCH='x86_64-unknown-linux-musl'
+    bash scripts/build_release.sh "$ARCH"
+    sudo install target/"$ARCH"/release/dock /usr/local/bin
 
 Usage
 -----
