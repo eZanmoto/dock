@@ -84,9 +84,9 @@ defined in a separate `build.Dockerfile`, and which also has the following
 
 ``` yaml
 schema_version: '0.1'
-organisation: 'ezanmoto'
-project: 'dock'
-default_shell_env: 'build'
+organisation: ezanmoto
+project: dock
+default_shell_env: build
 
 environments:
   build: {}
@@ -109,9 +109,9 @@ the environment block. All fields in the environment block are optional.
 
 ``` yaml
 schema_version: '0.1'
-organisation: 'ezanmoto'
-project: 'dock'
-default_shell_env: 'build'
+organisation: ezanmoto
+project: dock
+default_shell_env: build
 
 environments:
   build:
