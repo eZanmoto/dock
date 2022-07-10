@@ -11,7 +11,7 @@ use std::path::PathBuf;
 use crate::assert_cmd::cargo;
 
 pub const IMAGE_NAME_ROOT: &str = env!("TEST_IMG_NAMESPACE");
-const TEST_BASE_IMG: &str = env!("TEST_BASE_IMG");
+pub const TEST_BASE_IMG: &str = env!("TEST_BASE_IMG");
 const TEST_DIR: &str = env!("TEST_DIR");
 const TEST_ORG: &str = env!("TEST_ORG");
 const TEST_PROJ: &str = env!("TEST_PROJ");

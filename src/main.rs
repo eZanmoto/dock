@@ -22,6 +22,7 @@ mod canon_path;
 mod cmd_loggers;
 mod docker;
 mod fs;
+mod init;
 mod logging_process;
 mod option;
 mod rebuild;
@@ -40,18 +41,22 @@ use run_in::RebuildForRunInError;
 use run_in::RunInError;
 use run_in::SwitchingCmdLogger;
 
+const DEFAULT_TEMPLATES_SOURCE: &str = env!("DOCK_DEFAULT_TEMPLATES_SOURCE");
+
 const TAGGED_IMG_FLAG: &str = "tagged-image";
 const COMMAND_ARGS_FLAG: &str = "docker-args";
 const ENV_FLAG: &str = "env";
 const DEBUG_FLAG: &str = "debug";
 const TTY_FLAG: &str = "tty";
 const SKIP_REBUILD_FLAG: &str = "skip-rebuild";
+const SOURCE_FLAG: &str = "source";
+const TEMPLATE_FLAG: &str = "template";
 
 fn main() {
+    let dock_file_name = "dock.yaml";
+
     let rebuild_about: &str =
         "Replace a tagged Docker image with a new build";
-
-    let dock_file_name = "dock.yaml";
     let run_about: &str = &format!(
         "Run a command in an environment defined in `{}`",
         dock_file_name,
@@ -60,6 +65,8 @@ fn main() {
         "Start a shell in an environment defined in `{}`",
         dock_file_name,
     );
+    let init_about: &str =
+        "Initialise the current directory with a Dock environment";
 
     let args =
         Command::new("dpnd")
@@ -119,6 +126,24 @@ fn main() {
                         Arg::new(ENV_FLAG)
                             .help("The environment to run"),
                     ]),
+                Command::new("init")
+                    .about(init_about)
+                    .args(&[
+                        // TODO Add support for debug flag.
+                        Arg::new(SOURCE_FLAG)
+                            .short('s')
+                            .long(SOURCE_FLAG)
+                            .default_value(DEFAULT_TEMPLATES_SOURCE)
+                            .help("Use templates defined at this location"),
+                        Arg::new(TEMPLATE_FLAG)
+                            .required(true)
+                            .help("The template to initialise with")
+                            .long_help(
+                                "Use the template with this name (from the \
+                                 templates source) to initialise the current \
+                                 project",
+                            ),
+                    ]),
             ])
             .get_matches();
 
@@ -144,6 +169,10 @@ fn handle_arg_matches(args: &ArgMatches, dock_file_name: &str) {
         },
         Some(("shell", sub_args)) => {
             let exit_code = shell(dock_file_name, Some(sub_args));
+            process::exit(exit_code);
+        },
+        Some(("init", sub_args)) => {
+            let exit_code = init(sub_args);
             process::exit(exit_code);
         },
         Some((arg_name, sub_args)) => {
@@ -357,4 +386,26 @@ fn shell(dock_file_name: &str, args: Option<&ArgMatches>) -> i32 {
         },
         Some(Path::new("/bin/sh").to_path_buf()),
     )
+}
+
+fn init(args: &ArgMatches) -> i32 {
+    let raw_source = args.value_of(SOURCE_FLAG).unwrap();
+    let source =
+        match init::parse_templates_source(raw_source) {
+            Ok(source) => {
+                source
+            },
+            Err(e) => {
+                eprintln!("{}", e);
+                return 1;
+            },
+        };
+
+    let template = args.value_of(TEMPLATE_FLAG).unwrap();
+    if let Err(e) = init::init(&source, template) {
+        eprintln!("{}", e);
+        return 1;
+    }
+
+    0
 }
