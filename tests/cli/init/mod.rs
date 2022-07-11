@@ -10,6 +10,9 @@ use crate::test_setup;
 
 use crate::assert_cmd::assert::Assert;
 use crate::assert_cmd::Command as AssertCommand;
+use crate::predicates::prelude::predicate::str as predicate_str;
+
+// TODO Test directory contents after `init`.
 
 #[test]
 // Given (1) a Git repository `<source>` containing `<templ>`
@@ -121,3 +124,39 @@ fn run_test_cmd(root_test_dir: &str, args: &[&str]) -> Assert {
 const DOCK_HOSTPATHS_VAR_NAME: &str = "DOCK_HOSTPATHS";
 
 // TODO Test behaviour when template contains directories.
+
+#[test]
+// Given (1) a Git repository `<source>` containing `<templ>`
+//     AND (2) `<templ>` contains a dock file defining `<env>`
+//     AND (3) `<templ>` contains a Dockerfile named `<env>.Dockerfile`
+//     AND (4) `<env>.Dockerfile` creates a test file `<test>`
+//     AND (5) a test directory `<dir>`
+//     AND (6) `<dir>` contains a dock file
+// When `dock init --source <source> <templ>` is run in `<dir>`
+// Then (A) the command exits with code 2
+//     AND (B) the command STDERR indicates `dock.yaml` already exists
+//     AND (C) the command STDOUT is empty
+fn init_exits_if_dock_file_exists() {
+    let test_name = "init_exits_if_dock_file_exists";
+    let root_test_dir = test_setup::assert_create_root_dir(test_name);
+    // (1) (2) (3) (4)
+    let test_source_dir = create_templates_git_dir(&root_test_dir, test_name);
+    assert_init_git_repo(&test_source_dir);
+    // (5)
+    let test_dir = test_setup::assert_create_dir(root_test_dir, "dir");
+    let dock_file = test_dir.clone() + "/dock.yaml";
+    // (6)
+    assert_run::assert_run_stdout("touch", &[dock_file.as_str()]);
+    let source = "git:".to_owned() + &test_source_dir;
+
+    let cmd_result =
+        run_test_cmd(&test_dir, &["init", "--source", &source, "templ"]);
+
+    cmd_result
+        // (A)
+        .code(2)
+        // (B)
+        .stderr(predicate_str::contains("already contains 'dock.yaml'"))
+        // (C)
+        .stdout("");
+}

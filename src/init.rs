@@ -71,7 +71,7 @@ pub enum CloneToError {
     GitCloneFailed{source: AssertRunError, url: String},
 }
 
-pub fn init(source: &GitTemplatesSource, template: &str)
+pub fn init(source: &GitTemplatesSource, template: &str, dock_file: &Path)
     -> Result<(), InitError>
 {
     // TODO Use a `DOCK_CONFIG_YAML` to locate a `dock_config.yaml`, which can
@@ -79,6 +79,9 @@ pub fn init(source: &GitTemplatesSource, template: &str)
     // message to be displayed suggesting to create such a file.
 
     // TODO Check that a Dock file doesn't already exist.
+    if dock_file.exists() {
+        return Err(InitError::DockFileAlreadyExists);
+    }
 
     // TODO Avoid creating a temporary directory on each run.
     let output = run_in::assert_run("mktemp", &["--directory"])
@@ -115,6 +118,8 @@ pub fn init(source: &GitTemplatesSource, template: &str)
 #[allow(clippy::enum_variant_names)]
 #[derive(Debug, Snafu)]
 pub enum InitError {
+    #[snafu(display("The current directory already contains a Dock file"))]
+    DockFileAlreadyExists,
     #[snafu(display("Couldn't create temporary directory: {}", source))]
     CreateTmpDirFailed{source: AssertRunError},
     #[snafu(display(

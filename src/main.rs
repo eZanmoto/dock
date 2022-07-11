@@ -34,6 +34,7 @@ use cmd_loggers::Prefixer;
 use cmd_loggers::PrefixingCmdLogger;
 use cmd_loggers::StdCmdLogger;
 use cmd_loggers::Stream;
+use init::InitError;
 use run_in::Args;
 use run_in::CmdLoggers;
 use run_in::RebuildAction;
@@ -172,7 +173,7 @@ fn handle_arg_matches(args: &ArgMatches, dock_file_name: &str) {
             process::exit(exit_code);
         },
         Some(("init", sub_args)) => {
-            let exit_code = init(sub_args);
+            let exit_code = init(dock_file_name, sub_args);
             process::exit(exit_code);
         },
         Some((arg_name, sub_args)) => {
@@ -388,7 +389,7 @@ fn shell(dock_file_name: &str, args: Option<&ArgMatches>) -> i32 {
     )
 }
 
-fn init(args: &ArgMatches) -> i32 {
+fn init(dock_file_name: &str, args: &ArgMatches) -> i32 {
     let raw_source = args.value_of(SOURCE_FLAG).unwrap();
     let source =
         match init::parse_templates_source(raw_source) {
@@ -402,9 +403,21 @@ fn init(args: &ArgMatches) -> i32 {
         };
 
     let template = args.value_of(TEMPLATE_FLAG).unwrap();
-    if let Err(e) = init::init(&source, template) {
-        eprintln!("{}", e);
-        return 1;
+    let dock_file = PathBuf::from(dock_file_name);
+    if let Err(e) = init::init(&source, template, &dock_file) {
+        match e {
+            InitError::DockFileAlreadyExists => {
+                eprintln!(
+                    "The current directory already contains '{}'",
+                    dock_file.display(),
+                );
+                return 2;
+            },
+            e => {
+                eprintln!("{}", e);
+                return 1;
+            },
+        }
     }
 
     0
