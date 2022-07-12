@@ -441,6 +441,7 @@ impl<'a> FileActionLogger for WriterFileActionLogger<'a> {
         let msg =
             match action {
                 FileAction::Create => "Created",
+                FileAction::Skip => "Skipped",
             };
 
         writeln!(self.w, "{} '{}'", msg, file.display())

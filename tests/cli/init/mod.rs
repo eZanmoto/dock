@@ -196,3 +196,51 @@ fn init_exits_if_dock_file_exists() {
         // (C)
         .stdout("");
 }
+
+#[test]
+// Given (1) a Git repository `<source>` containing `<templ>`
+//     AND (2) `<templ>` contains a dock file defining `<env>`
+//     AND (3) `<templ>` contains a Dockerfile named `<env>.Dockerfile`
+//     AND (4) `<templ>/<env>.Dockerfile` is not empty
+//     AND (5) a test directory `<dir>`
+//     AND (6) `<dir>` contains a Dockerfile named `<env>.Dockerfile`
+//     AND (7) `<dir>/<env>.Dockerfile` is empty
+// When `dock init --source <source> <templ>` is run in `<dir>`
+// Then (A) the command is successful
+//     AND (B) the command STDERR is empty
+//     AND (C) the command STDOUT contains the name of the dock file
+//     AND (D) the command STDOUT contains `<env>.Dockerfile`
+//     AND (E) the contents of `<dir>/<env>.Dockerfile` is unchanged
+fn init_doesnt_overwrite_existing_files() {
+    let test_name = "init_doesnt_overwrite_existing_files";
+    let root_test_dir = test_setup::assert_create_root_dir(test_name);
+    // (1) (2) (3) (4)
+    let test_source_dir = create_templates_dir(&root_test_dir, test_name);
+    assert_init_git_repo(&test_source_dir);
+    // (5)
+    let test_dir = test_setup::assert_create_dir(root_test_dir, "dir");
+    let dockerfile_name = test_name.to_string() + ".Dockerfile";
+    // (6)
+    let dockerfile_path = format!("{}/{}", test_dir, dockerfile_name);
+    // (7)
+    assert_run::assert_run_stdout("touch", &[dockerfile_path.as_str()]);
+    let source = "git:".to_owned() + &test_source_dir;
+
+    let cmd_result =
+        run_test_cmd(&test_dir, &["init", "--source", &source, "templ"]);
+
+    let dockerfile_msg = format!("Skipped '{}'", dockerfile_name);
+    cmd_result
+        // (A)
+        .code(0)
+        // (B)
+        .stderr("")
+        // (C)
+        .stdout(predicate_str::contains("Created 'dock.yaml'"))
+        // (D)
+        .stdout(predicate_str::contains(dockerfile_msg));
+    let dockerfile_contents =
+        assert_run::assert_run_stdout("cat", &[dockerfile_path.as_str()]);
+    // (E)
+    assert_eq!(dockerfile_contents, "");
+}

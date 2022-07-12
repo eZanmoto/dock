@@ -111,11 +111,15 @@ pub fn init(
         let src = maybe_entry
             .context(ReadTemplateEntryFailed)?;
 
-        // TODO Skip files that already exist, and output filenames of those
-        // that get skipped.
-
         let tgt_name = src.file_name();
         let tgt = Path::new(&tgt_name);
+
+        if PathBuf::from(&tgt_name).exists() {
+            // We ignore the error returned from logging the action.
+            mem::drop(logger.log_file_action(tgt, FileAction::Skip));
+
+            continue;
+        }
 
         fs::copy(src.path(), tgt)
             .context(CopyTemplateFileFailed{path: src.path()})?;
@@ -194,4 +198,5 @@ pub trait FileActionLogger {
 
 pub enum FileAction {
     Create,
+    Skip,
 }
