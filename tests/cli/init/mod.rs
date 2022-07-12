@@ -29,7 +29,7 @@ fn init_outputs_created_files() {
     let test_name = "init_outputs_created_files";
     let root_test_dir = test_setup::assert_create_root_dir(test_name);
     // (1) (2) (3) (4)
-    let test_source_dir = create_templates_git_dir(&root_test_dir, test_name);
+    let test_source_dir = create_templates_dir(&root_test_dir, test_name);
     assert_init_git_repo(&test_source_dir);
     // (5)
     let test_dir = test_setup::assert_create_dir(root_test_dir, "dir");
@@ -65,7 +65,7 @@ fn init_creates_env() {
     let test_name = "init_creates_env";
     let root_test_dir = test_setup::assert_create_root_dir(test_name);
     // (1) (2) (3) (4)
-    let test_source_dir = create_templates_git_dir(&root_test_dir, test_name);
+    let test_source_dir = create_templates_dir(&root_test_dir, test_name);
     assert_init_git_repo(&test_source_dir);
     // (5)
     let test_dir = test_setup::assert_create_dir(root_test_dir, "dir");
@@ -85,7 +85,7 @@ fn init_creates_env() {
         .stdout(format!("{}\n", test_name));
 }
 
-fn create_templates_git_dir(root_test_dir: &str, test_name: &str) -> String {
+fn create_templates_dir(root_test_dir: &str, test_name: &str) -> String {
     let test_dock_yaml = formatdoc!{
         "
             schema_version: '0.1'
@@ -176,7 +176,7 @@ fn init_exits_if_dock_file_exists() {
     let test_name = "init_exits_if_dock_file_exists";
     let root_test_dir = test_setup::assert_create_root_dir(test_name);
     // (1) (2) (3) (4)
-    let test_source_dir = create_templates_git_dir(&root_test_dir, test_name);
+    let test_source_dir = create_templates_dir(&root_test_dir, test_name);
     assert_init_git_repo(&test_source_dir);
     // (5)
     let test_dir = test_setup::assert_create_dir(root_test_dir, "dir");
