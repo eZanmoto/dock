@@ -4,6 +4,7 @@
 
 use std::env;
 use std::io;
+use std::io::Error as IoError;
 use std::io::StderrLock;
 use std::io::StdoutLock;
 use std::io::Write;
@@ -34,6 +35,8 @@ use cmd_loggers::Prefixer;
 use cmd_loggers::PrefixingCmdLogger;
 use cmd_loggers::StdCmdLogger;
 use cmd_loggers::Stream;
+use init::FileAction;
+use init::FileActionLogger;
 use init::InitError;
 use run_in::Args;
 use run_in::CmdLoggers;
@@ -402,9 +405,13 @@ fn init(dock_file_name: &str, args: &ArgMatches) -> i32 {
             },
         };
 
+    let stdout = io::stdout();
+    let mut stdout = stdout.lock();
+
+    let mut logger = WriterFileActionLogger{w: &mut stdout};
     let template = args.value_of(TEMPLATE_FLAG).unwrap();
     let dock_file = PathBuf::from(dock_file_name);
-    if let Err(e) = init::init(&source, template, &dock_file) {
+    if let Err(e) = init::init(&mut logger, &source, template, &dock_file) {
         match e {
             InitError::DockFileAlreadyExists => {
                 eprintln!(
@@ -421,4 +428,21 @@ fn init(dock_file_name: &str, args: &ArgMatches) -> i32 {
     }
 
     0
+}
+
+struct WriterFileActionLogger<'a> {
+    w: &'a mut dyn Write,
+}
+
+impl<'a> FileActionLogger for WriterFileActionLogger<'a> {
+    fn log_file_action(&mut self, file: &Path, action: FileAction)
+        -> Result<(), IoError>
+    {
+        let msg =
+            match action {
+                FileAction::Create => "Created",
+            };
+
+        writeln!(self.w, "{} '{}'", msg, file.display())
+    }
 }

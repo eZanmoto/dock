@@ -5,6 +5,7 @@
 use std::ffi::OsStr;
 use std::fs;
 use std::io::Error as IoError;
+use std::mem;
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
@@ -71,7 +72,12 @@ pub enum CloneToError {
     GitCloneFailed{source: AssertRunError, url: String},
 }
 
-pub fn init(source: &GitTemplatesSource, template: &str, dock_file: &Path)
+pub fn init(
+    logger: &mut dyn FileActionLogger,
+    source: &GitTemplatesSource,
+    template: &str,
+    dock_file: &Path,
+)
     -> Result<(), InitError>
 {
     // TODO Use a `DOCK_CONFIG_YAML` to locate a `dock_config.yaml`, which can
@@ -102,14 +108,20 @@ pub fn init(source: &GitTemplatesSource, template: &str, dock_file: &Path)
         .context(ReadTemplateDirFailed{template_dir})?;
 
     for maybe_entry in entries {
-        let entry = maybe_entry
+        let src = maybe_entry
             .context(ReadTemplateEntryFailed)?;
 
         // TODO Skip files that already exist, and output filenames of those
         // that get skipped.
 
-        fs::copy(entry.path(), entry.file_name())
-            .context(CopyTemplateFileFailed{path: entry.path()})?;
+        let tgt_name = src.file_name();
+        let tgt = Path::new(&tgt_name);
+
+        fs::copy(src.path(), tgt)
+            .context(CopyTemplateFileFailed{path: src.path()})?;
+
+        // We ignore the error returned from logging the action.
+        mem::drop(logger.log_file_action(tgt, FileAction::Create));
     }
 
     Ok(())
@@ -173,4 +185,13 @@ where
     }
 
     Ok(output)
+}
+
+pub trait FileActionLogger {
+    fn log_file_action(&mut self, file: &Path, action: FileAction)
+        -> Result<(), IoError>;
+}
+
+pub enum FileAction {
+    Create,
 }

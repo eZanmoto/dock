@@ -20,6 +20,42 @@ use crate::predicates::prelude::predicate::str as predicate_str;
 //     AND (3) `<templ>` contains a Dockerfile named `<env>.Dockerfile`
 //     AND (4) `<env>.Dockerfile` creates a test file `<test>`
 //     AND (5) an empty test directory `<dir>`
+// When `dock init --source <source> <templ>` is run in `<dir>`
+// Then (A) the command is successful
+//     AND (B) the command STDERR is empty
+//     AND (C) the command STDOUT contains the name of the dock file
+//     AND (D) the command STDOUT contains `<env>.Dockerfile`
+fn init_outputs_created_files() {
+    let test_name = "init_outputs_created_files";
+    let root_test_dir = test_setup::assert_create_root_dir(test_name);
+    // (1) (2) (3) (4)
+    let test_source_dir = create_templates_git_dir(&root_test_dir, test_name);
+    assert_init_git_repo(&test_source_dir);
+    // (5)
+    let test_dir = test_setup::assert_create_dir(root_test_dir, "dir");
+    let source = "git:".to_owned() + &test_source_dir;
+
+    let cmd_result =
+        run_test_cmd(&test_dir, &["init", "--source", &source, "templ"]);
+
+    let dockerfile_msg = format!("Created '{}.Dockerfile'", test_name);
+    cmd_result
+        // (A)
+        .code(0)
+        // (B)
+        .stderr("")
+        // (C)
+        .stdout(predicate_str::contains("Created 'dock.yaml'"))
+        // (D)
+        .stdout(predicate_str::contains(dockerfile_msg));
+}
+
+#[test]
+// Given (1) a Git repository `<source>` containing `<templ>`
+//     AND (2) `<templ>` contains a dock file defining `<env>`
+//     AND (3) `<templ>` contains a Dockerfile named `<env>.Dockerfile`
+//     AND (4) `<env>.Dockerfile` creates a test file `<test>`
+//     AND (5) an empty test directory `<dir>`
 //     AND (6) `dock init --source <source> <templ>` is run in `<dir>`
 // When `dock run-in <env> cat <test>` is run in `<dir>`
 // Then (A) the command is successful
