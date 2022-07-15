@@ -19,7 +19,7 @@ use crate::predicates::prelude::predicate::str as predicate_str;
 //     AND (2) `<templ>` contains a dock file defining `<env>`
 //     AND (3) `<templ>` contains a Dockerfile named `<env>.Dockerfile`
 //     AND (4) `<env>.Dockerfile` creates a test file `<test>`
-//     AND (5) an empty test directory `<dir>`
+//     AND (5) an empty test directory `<dir>` exists
 // When `dock init --source <source> <templ>` is run in `<dir>`
 // Then (A) the command is successful
 //     AND (B) the command STDERR is empty
@@ -55,7 +55,7 @@ fn init_outputs_created_files() {
 //     AND (2) `<templ>` contains a dock file defining `<env>`
 //     AND (3) `<templ>` contains a Dockerfile named `<env>.Dockerfile`
 //     AND (4) `<env>.Dockerfile` creates a test file `<test>`
-//     AND (5) an empty test directory `<dir>`
+//     AND (5) an empty test directory `<dir>` exists
 //     AND (6) `dock init --source <source> <templ>` is run in `<dir>`
 // When `dock run-in <env> cat <test>` is run in `<dir>`
 // Then (A) the command is successful
@@ -166,7 +166,7 @@ const DOCK_HOSTPATHS_VAR_NAME: &str = "DOCK_HOSTPATHS";
 //     AND (2) `<templ>` contains a dock file defining `<env>`
 //     AND (3) `<templ>` contains a Dockerfile named `<env>.Dockerfile`
 //     AND (4) `<env>.Dockerfile` creates a test file `<test>`
-//     AND (5) a test directory `<dir>`
+//     AND (5) a test directory `<dir>` exists
 //     AND (6) `<dir>` contains a dock file
 // When `dock init --source <source> <templ>` is run in `<dir>`
 // Then (A) the command exits with code 2
@@ -202,7 +202,7 @@ fn init_exits_if_dock_file_exists() {
 //     AND (2) `<templ>` contains a dock file defining `<env>`
 //     AND (3) `<templ>` contains a Dockerfile named `<env>.Dockerfile`
 //     AND (4) `<templ>/<env>.Dockerfile` is not empty
-//     AND (5) a test directory `<dir>`
+//     AND (5) a test directory `<dir>` exists
 //     AND (6) `<dir>` contains a Dockerfile named `<env>.Dockerfile`
 //     AND (7) `<dir>/<env>.Dockerfile` is empty
 // When `dock init --source <source> <templ>` is run in `<dir>`
@@ -243,4 +243,38 @@ fn init_doesnt_overwrite_existing_files() {
         assert_run::assert_run_stdout("cat", &[dockerfile_path.as_str()]);
     // (E)
     assert_eq!(dockerfile_contents, "");
+}
+
+#[test]
+// Given (1) a directory `<source>` containing `<templ>`
+//     AND (2) `<templ>` contains a dock file defining `<env>`
+//     AND (3) `<templ>` contains a Dockerfile named `<env>.Dockerfile`
+//     AND (4) `<env>.Dockerfile` creates a test file `<test>`
+//     AND (5) an empty test directory `<dir>` exists
+//     AND (6) `dock init --source <source> <templ>` is run in `<dir>`
+// When `dock run-in <env> cat <test>` is run in `<dir>`
+// Then (A) the command is successful
+//     AND (B) the command STDERR is empty
+//     AND (C) the command STDOUT contains the contents of `<test>`
+fn init_with_dir_source() {
+    let test_name = "init_with_dir_source";
+    let root_test_dir = test_setup::assert_create_root_dir(test_name);
+    // (1) (2) (3) (4)
+    let test_source_dir = create_templates_dir(&root_test_dir, test_name);
+    // (5)
+    let test_dir = test_setup::assert_create_dir(root_test_dir, "dir");
+    let source = "dir:".to_owned() + &test_source_dir;
+    // (6)
+    assert_test_cmd(&test_dir, &["init", "--source", &source, "templ"]);
+
+    let cmd_result =
+        run_test_cmd(&test_dir, &["run-in", test_name, "cat", "/test.txt"]);
+
+    cmd_result
+        // (A)
+        .code(0)
+        // (B)
+        .stderr("")
+        // (C)
+        .stdout(format!("{}\n", test_name));
 }

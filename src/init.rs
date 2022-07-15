@@ -21,23 +21,28 @@ use crate::run_in;
 use crate::run_in::AssertRunError;
 
 pub fn parse_templates_source(raw_source: &str)
-    -> Result<GitTemplatesSource, ParseTemplatesSourceError>
+    -> Result<TemplatesSource, ParseTemplatesSourceError>
 {
     let first_colon = raw_source.find(':')
         .context(NoColonInSource)?;
 
     let (source_type, raw_source_url) = raw_source.split_at(first_colon);
 
-    if source_type != "git" {
-        let source_type = source_type.to_string();
-        return
-            Err(ParseTemplatesSourceError::UnsupportedSourceType{source_type});
-    }
-
     // TODO Consider whether to replace `unwrap()` with a "dev error".
-    let source_url = raw_source_url.strip_prefix(':').unwrap();
+    let source_location = raw_source_url
+        .strip_prefix(':')
+        .unwrap()
+        .to_string();
 
-    Ok(GitTemplatesSource::new(source_url.to_string()))
+    if source_type == "git" {
+        Ok(TemplatesSource::Git(GitTemplatesSource::new(source_location)))
+    } else if source_type == "dir" {
+        Ok(TemplatesSource::Dir(DirTemplatesSource::new(source_location)))
+    } else {
+        let source_type = source_type.to_string();
+
+        Err(ParseTemplatesSourceError::UnsupportedSourceType{source_type})
+    }
 }
 
 #[derive(Debug, Snafu)]
@@ -46,6 +51,32 @@ pub enum ParseTemplatesSourceError {
     NoColonInSource,
     #[snafu(display("Unsupported templates source type: {}", source_type))]
     UnsupportedSourceType{source_type: String},
+}
+
+pub enum TemplatesSource {
+    Git(GitTemplatesSource),
+    Dir(DirTemplatesSource),
+}
+
+impl TemplatesSource {
+    fn clone_to(&self, dir: &Path) -> Result<(), CloneToError> {
+        match self {
+            Self::Git(s) =>
+                s.clone_to(dir)
+                    .context(GitCloneToFailed),
+            Self::Dir(s) =>
+                s.clone_to(dir)
+                    .context(DirCloneToFailed),
+        }
+    }
+}
+
+#[derive(Debug, Snafu)]
+pub enum CloneToError {
+    #[snafu(display("{}", source))]
+    GitCloneToFailed{source: GitCloneToError},
+    #[snafu(display("{}", source))]
+    DirCloneToFailed{source: DirCloneToError},
 }
 
 pub struct GitTemplatesSource {
@@ -57,7 +88,7 @@ impl GitTemplatesSource {
         Self{url}
     }
 
-    fn clone_to(&self, dir: &Path) -> Result<(), CloneToError> {
+    fn clone_to(&self, dir: &Path) -> Result<(), GitCloneToError> {
         assert_run_in_dir(dir, "git", &["clone", self.url.as_str(), "."])
             .context(GitCloneFailed{url: self.url.clone()})?;
 
@@ -66,15 +97,56 @@ impl GitTemplatesSource {
 }
 
 #[derive(Debug, Snafu)]
-pub enum CloneToError {
+pub enum GitCloneToError {
     #[snafu(display("Couldn't clone Git repository '{}': {}", url, source))]
     // TODO Consider whether to include `url` in this variant.
     GitCloneFailed{source: AssertRunError, url: String},
 }
 
+pub struct DirTemplatesSource {
+    path: String,
+}
+
+impl DirTemplatesSource {
+    fn new(path: String) -> Self {
+        Self{path}
+    }
+
+    fn clone_to(&self, dir: &Path) -> Result<(), DirCloneToError> {
+        // NOTE `remove_dir` doesn't remove `dir` if it isn't empty, which is
+        // intended behaviour for this method.
+        fs::remove_dir(dir)
+            .context(RemoveDirFailed{path: self.path.clone()})?;
+
+        // TODO Ideally the arguments to `assert_run` should use `&OsStr`s, so
+        // `dir.as_os_str()` could be used without the potential for failure.
+        let raw_dir = dir.to_str()
+            .context(InvalidUtf8Dir{path: self.path.clone()})?;
+
+        run_in::assert_run("cp", &["-r", self.path.as_str(), raw_dir])
+            .context(CopyDirFailed{path: self.path.clone()})?;
+
+        Ok(())
+    }
+}
+
+#[derive(Debug, Snafu)]
+pub enum DirCloneToError {
+    // TODO Consider whether to include `path` in these variants.
+    #[snafu(display(
+        "Couldn't clone directory '{}': invalid UTF-8 in target path",
+        path,
+    ))]
+    InvalidUtf8Dir{path: String},
+    #[snafu(display("Couldn't clone directory '{}': {}", path, source))]
+    RemoveDirFailed{source: IoError, path: String},
+    #[snafu(display("Couldn't copy directory '{}': {}", path, source))]
+    CopyDirFailed{source: AssertRunError, path: String},
+}
+
 pub fn init(
     logger: &mut dyn FileActionLogger,
-    source: &GitTemplatesSource,
+    source: &TemplatesSource,
     template: &str,
     dock_file: &Path,
 )
