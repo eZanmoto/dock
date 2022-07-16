@@ -3,6 +3,7 @@
 // licence that can be found in the LICENCE file.
 
 use std::env;
+use std::fs;
 use std::str;
 
 use crate::assert_run;
@@ -299,6 +300,42 @@ fn init_with_dir_in_template() {
     test_setup::assert_write_fs_state(test_templ_dir.as_str(), fs_state);
     // (3)
     let test_dir = test_setup::assert_create_dir(root_test_dir, "dir");
+    let source = "dir:".to_owned() + &test_source_dir;
+
+    let cmd_result =
+        run_test_cmd(&test_dir, &["init", "--source", &source, "templ"]);
+
+    cmd_result
+        // (A)
+        .code(0)
+        // (B)
+        .stderr("");
+}
+
+#[test]
+// Given (1) a directory `<source>` containing `<templ>`
+//     AND (2) `<templ>` contains a non-empty directory `<nonempty>`
+//     AND (3) a test directory `<dir>` exists
+//     AND (4) `<dir>` contains a directory named `<nonempty>`
+// When `dock init --source <source> <templ>` is run in `<dir>`
+// Then (A) the command is successful
+//     AND (B) the command STDERR is empty
+fn init_with_dir_in_template_and_dir_exists() {
+    let test_name = "init_with_dir_in_template_and_dir_exists";
+    let root_test_dir = test_setup::assert_create_root_dir(test_name);
+    let test_source_dir =
+        test_setup::assert_create_dir(root_test_dir.to_string(), "templates");
+    // (1)
+    let test_templ_dir =
+        test_setup::assert_create_dir(test_source_dir.clone(), "templ");
+    let fs_state = &hashmap!{"nonempty_dir/dummy" => ""};
+    // (2)
+    test_setup::assert_write_fs_state(test_templ_dir.as_str(), fs_state);
+    // (3)
+    let test_dir = test_setup::assert_create_dir(root_test_dir, "dir");
+    // (4)
+    fs::create_dir(format!("{}/nonempty_dir", test_dir))
+        .expect("couldn't create \"non-empty\" directory");
     let source = "dir:".to_owned() + &test_source_dir;
 
     let cmd_result =

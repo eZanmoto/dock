@@ -10,6 +10,7 @@ use std::fs;
 use std::fs::DirEntry;
 use std::fs::FileType;
 use std::io::Error as IoError;
+use std::io::ErrorKind;
 use std::mem;
 use std::path::Path;
 use std::path::PathBuf;
@@ -238,8 +239,16 @@ fn fs_deep_copy(logger: &mut dyn FileActionLogger, src: &Path, tgt: &Path)
             let tgt = tgt.join(rel_path);
 
             if file_type.is_dir() {
-                fs::create_dir(&tgt)
-                    .context(CreateDirFailed{path: tgt.clone()})?;
+                let result = fs::create_dir(&tgt);
+
+                if let Err(source) = result {
+                    if source.kind() != ErrorKind::AlreadyExists {
+                        return Err(FsDeepCopyError::CreateDirFailed{
+                            source,
+                            path: tgt.clone(),
+                        });
+                    }
+                }
             } else {
                 if tgt.exists() {
                     // We ignore the error returned from logging the action.
