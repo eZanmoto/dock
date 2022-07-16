@@ -2,12 +2,18 @@
 // Use of this source code is governed by an MIT
 // licence that can be found in the LICENCE file.
 
+use std::error::Error as StdError;
 use std::ffi::OsStr;
+use std::fmt::Debug;
+use std::fmt::Display;
 use std::fs;
+use std::fs::DirEntry;
+use std::fs::FileType;
 use std::io::Error as IoError;
 use std::mem;
 use std::path::Path;
 use std::path::PathBuf;
+use std::path::StripPrefixError;
 use std::process::Command;
 use std::process::Output;
 use std::str;
@@ -149,6 +155,7 @@ pub fn init(
     source: &TemplatesSource,
     template: &str,
     dock_file: &Path,
+    target_dir: &Path,
 )
     -> Result<(), InitError>
 {
@@ -176,29 +183,8 @@ pub fn init(
     let mut template_dir = tmp_dir;
     template_dir.push(template);
 
-    let entries = fs::read_dir(&template_dir)
-        .context(ReadTemplateDirFailed{template_dir})?;
-
-    for maybe_entry in entries {
-        let src = maybe_entry
-            .context(ReadTemplateEntryFailed)?;
-
-        let tgt_name = src.file_name();
-        let tgt = Path::new(&tgt_name);
-
-        if PathBuf::from(&tgt_name).exists() {
-            // We ignore the error returned from logging the action.
-            mem::drop(logger.log_file_action(tgt, FileAction::Skip));
-
-            continue;
-        }
-
-        fs::copy(src.path(), tgt)
-            .context(CopyTemplateFileFailed{path: src.path()})?;
-
-        // We ignore the error returned from logging the action.
-        mem::drop(logger.log_file_action(tgt, FileAction::Create));
-    }
+    fs_deep_copy(logger, &template_dir, target_dir)
+        .context(CopyTemplateFailed{start_dir: template_dir})?;
 
     Ok(())
 }
@@ -230,11 +216,139 @@ pub enum InitError {
     #[snafu(display("Couldn't read template entry: {}", source))]
     ReadTemplateEntryFailed{source: IoError},
     #[snafu(display(
+        "Couldn't copy template from '{}': {}",
+        start_dir.display(),
+        source,
+    ))]
+    CopyTemplateFailed{source: WalkError<FsDeepCopyError>, start_dir: PathBuf},
+}
+
+fn fs_deep_copy(logger: &mut dyn FileActionLogger, src: &Path, tgt: &Path)
+    -> Result<(), WalkError<FsDeepCopyError>>
+{
+    walk(
+        src,
+        |entry, file_type| {
+            let entry_path = entry.path();
+            let rel_path = entry_path.strip_prefix(src)
+                .context(DevErrStripPrefixFailed{
+                    entry_path: entry_path.clone(),
+                    prefix: src,
+                })?;
+            let tgt = tgt.join(rel_path);
+
+            if file_type.is_dir() {
+                fs::create_dir(&tgt)
+                    .context(CreateDirFailed{path: tgt.clone()})?;
+            } else {
+                if tgt.exists() {
+                    // We ignore the error returned from logging the action.
+                    mem::drop(logger.log_file_action(&tgt, FileAction::Skip));
+
+                    return Ok(());
+                }
+
+                fs::copy(&entry_path, &tgt)
+                    .context(CopyFileFailed{path: entry_path})?;
+            }
+
+            // We ignore the error returned from logging the action.
+            mem::drop(logger.log_file_action(&tgt, FileAction::Create));
+
+            Ok(())
+        },
+    )
+}
+
+#[allow(clippy::enum_variant_names)]
+#[derive(Debug, Snafu)]
+pub enum FsDeepCopyError {
+    #[snafu(display(
+        "Couldn't create target directory '{}': {}",
+        path.display(),
+        source,
+    ))]
+    CreateDirFailed{source: IoError, path: PathBuf},
+    #[snafu(display(
         "Couldn't copy template file '{}': {}",
         path.display(),
         source,
     ))]
-    CopyTemplateFileFailed{source: IoError, path: PathBuf},
+    CopyFileFailed{source: IoError, path: PathBuf},
+
+    #[snafu(display(
+        "Dev Error: Couldn't strip prefix '{}' from '{}': {}",
+        prefix.display(),
+        entry_path.display(),
+        source,
+    ))]
+    DevErrStripPrefixFailed{
+        source: StripPrefixError,
+        entry_path: PathBuf,
+        prefix: PathBuf,
+    },
+}
+
+fn walk<F, E>(dir: &Path, mut f: F) -> Result<(), WalkError<E>>
+where
+    F: FnMut(&DirEntry, FileType) -> Result<(), E>,
+    E: 'static + Debug + Display + StdError,
+{
+    let entries = fs::read_dir(&dir)
+        .context(ReadDirFailed{dir})?;
+
+    let mut frontier: Vec<Result<DirEntry, IoError>> = entries.collect();
+
+    while let Some(maybe_entry) = frontier.pop() {
+
+        // TODO Keep the directory that the entry came from, so that it can be
+        // added to the error, or resolve entries as they're added to the
+        // frontier.
+        let entry = maybe_entry
+            .context(ReadEntryFailed)?;
+
+        let file_type = entry.file_type()
+            // NOTE We can't add `entry` to the error for now because
+            // `DirEntry` doesn't implement `clone()`, and the `entry` is
+            // needed as a parameter to `f`.
+            .context(GetEntryFileTypeFailed{entry_path: entry.path()})?;
+
+        f(&entry, file_type)
+            // NOTE Same as above.
+            .context(CallFailed{entry_path: entry.path()})?;
+
+        if file_type.is_dir() {
+            let entry_path = entry.path();
+
+            let entries = fs::read_dir(&entry_path)
+                .context(ReadDirFailed{dir: entry_path})?;
+
+            frontier.extend(entries);
+        }
+    }
+
+    Ok(())
+}
+
+#[allow(clippy::enum_variant_names)]
+#[derive(Debug, Snafu)]
+pub enum WalkError<E: 'static + Debug + Display + StdError> {
+    #[snafu(display(
+        "Couldn't read directory '{}': {}",
+        dir.display(),
+        source,
+    ))]
+    ReadDirFailed{source: IoError, dir: PathBuf},
+    #[snafu(display("Couldn't read directory entry: {}", source))]
+    ReadEntryFailed{source: IoError},
+    #[snafu(display(
+        "Couldn't get file type of directory entry '{}': {}",
+        entry_path.display(),
+        source,
+    ))]
+    GetEntryFileTypeFailed{source: IoError, entry_path: PathBuf},
+    #[snafu(display("{}", source))]
+    CallFailed{source: E, entry_path: PathBuf},
 }
 
 // TODO Mostly duplicated from `crate::run_in`.

@@ -38,14 +38,14 @@ fn init_outputs_created_files() {
     let cmd_result =
         run_test_cmd(&test_dir, &["init", "--source", &source, "templ"]);
 
-    let dockerfile_msg = format!("Created '{}.Dockerfile'", test_name);
+    let dockerfile_msg = format!("Created './{}.Dockerfile'", test_name);
     cmd_result
         // (A)
         .code(0)
         // (B)
         .stderr("")
         // (C)
-        .stdout(predicate_str::contains("Created 'dock.yaml'"))
+        .stdout(predicate_str::contains("Created './dock.yaml'"))
         // (D)
         .stdout(predicate_str::contains(dockerfile_msg));
 }
@@ -229,14 +229,14 @@ fn init_doesnt_overwrite_existing_files() {
     let cmd_result =
         run_test_cmd(&test_dir, &["init", "--source", &source, "templ"]);
 
-    let dockerfile_msg = format!("Skipped '{}'", dockerfile_name);
+    let dockerfile_msg = format!("Skipped './{}'", dockerfile_name);
     cmd_result
         // (A)
         .code(0)
         // (B)
         .stderr("")
         // (C)
-        .stdout(predicate_str::contains("Created 'dock.yaml'"))
+        .stdout(predicate_str::contains("Created './dock.yaml'"))
         // (D)
         .stdout(predicate_str::contains(dockerfile_msg));
     let dockerfile_contents =
@@ -277,4 +277,36 @@ fn init_with_dir_source() {
         .stderr("")
         // (C)
         .stdout(format!("{}\n", test_name));
+}
+
+#[test]
+// Given (1) a directory `<source>` containing `<templ>`
+//     AND (2) `<templ>` contains a non-empty directory
+//     AND (3) an empty test directory `<dir>` exists
+// When `dock init --source <source> <templ>` is run in `<dir>`
+// Then (A) the command is successful
+//     AND (B) the command STDERR is empty
+fn init_with_dir_in_template() {
+    let test_name = "init_with_dir_in_template";
+    let root_test_dir = test_setup::assert_create_root_dir(test_name);
+    let test_source_dir =
+        test_setup::assert_create_dir(root_test_dir.to_string(), "templates");
+    // (1)
+    let test_templ_dir =
+        test_setup::assert_create_dir(test_source_dir.clone(), "templ");
+    let fs_state = &hashmap!{"nonempty_dir/dummy" => ""};
+    // (2)
+    test_setup::assert_write_fs_state(test_templ_dir.as_str(), fs_state);
+    // (3)
+    let test_dir = test_setup::assert_create_dir(root_test_dir, "dir");
+    let source = "dir:".to_owned() + &test_source_dir;
+
+    let cmd_result =
+        run_test_cmd(&test_dir, &["init", "--source", &source, "templ"]);
+
+    cmd_result
+        // (A)
+        .code(0)
+        // (B)
+        .stderr("");
 }

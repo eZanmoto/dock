@@ -411,7 +411,14 @@ fn init(dock_file_name: &str, args: &ArgMatches) -> i32 {
     let mut logger = WriterFileActionLogger{w: &mut stdout};
     let template = args.value_of(TEMPLATE_FLAG).unwrap();
     let dock_file = PathBuf::from(dock_file_name);
-    if let Err(e) = init::init(&mut logger, &source, template, &dock_file) {
+    let result = init::init(
+        &mut logger,
+        &source,
+        template,
+        &dock_file,
+        Path::new("."),
+    );
+    if let Err(e) = result {
         match e {
             InitError::DockFileAlreadyExists => {
                 eprintln!(
