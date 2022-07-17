@@ -160,8 +160,6 @@ fn run_test_cmd(root_test_dir: &str, args: &[&str]) -> Assert {
 // TODO Duplicated from `crate::cli::run_in::success::run_test_cmd`.
 const DOCK_HOSTPATHS_VAR_NAME: &str = "DOCK_HOSTPATHS";
 
-// TODO Test behaviour when template contains directories.
-
 #[test]
 // Given (1) a Git repository `<source>` containing `<templ>`
 //     AND (2) `<templ>` contains a dock file defining `<env>`
