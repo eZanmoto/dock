@@ -30,34 +30,54 @@ use crate::run_in::AssertRunError;
 pub fn parse_templates_source(raw_source: &str)
     -> Result<TemplatesSource, ParseTemplatesSourceError>
 {
-    let first_colon = raw_source.find(':')
-        .context(NoColonInSource)?;
+    let parts = split_templates_source(raw_source)
+        .context(SplitTemplatesSourceFailed)?;
 
-    let (source_type, raw_source_url) = raw_source.split_at(first_colon);
-
-    // TODO Consider whether to replace `unwrap()` with a "dev error".
-    let source_location = raw_source_url
-        .strip_prefix(':')
-        .unwrap()
-        .to_string();
-
-    if source_type == "git" {
-        Ok(TemplatesSource::Git(GitTemplatesSource::new(source_location)))
-    } else if source_type == "dir" {
-        Ok(TemplatesSource::Dir(DirTemplatesSource::new(source_location)))
+    if parts.scheme == "git" {
+        Ok(TemplatesSource::Git(GitTemplatesSource::new(parts.addr)))
+    } else if parts.scheme == "dir" {
+        Ok(TemplatesSource::Dir(DirTemplatesSource::new(parts.addr)))
     } else {
-        let source_type = source_type.to_string();
-
-        Err(ParseTemplatesSourceError::UnsupportedSourceType{source_type})
+        Err(ParseTemplatesSourceError::UnsupportedSourceType{
+            source_scheme: parts.scheme,
+        })
     }
 }
 
 #[derive(Debug, Snafu)]
 pub enum ParseTemplatesSourceError {
-    #[snafu(display("The templates source must contain ':'"))]
-    NoColonInSource,
-    #[snafu(display("Unsupported templates source type: {}", source_type))]
-    UnsupportedSourceType{source_type: String},
+    #[snafu(display("Couldn't split the templates source: {}", source))]
+    SplitTemplatesSourceFailed{source: SplitTemplatesSourceError},
+    #[snafu(display("Unsupported templates source scheme: {}", source_scheme))]
+    UnsupportedSourceType{source_scheme: String},
+}
+
+fn split_templates_source(raw_source: &str)
+    -> Result<TemplatesSourceParts, SplitTemplatesSourceError>
+{
+    let parts: Vec<&str> = raw_source.split(':').collect();
+
+    let n = parts.len();
+    if n < 2 {
+        // TODO Add `n` to this error.
+        return Err(SplitTemplatesSourceError::TooFewColons);
+    }
+
+    Ok(TemplatesSourceParts{
+        scheme: parts[0].to_string(),
+        addr: parts[1..n].join(":"),
+    })
+}
+
+#[derive(Debug, Snafu)]
+pub enum SplitTemplatesSourceError {
+    #[snafu(display("The templates source contained too few ':'"))]
+    TooFewColons,
+}
+
+struct TemplatesSourceParts {
+    scheme: String,
+    addr: String,
 }
 
 pub enum TemplatesSource {
