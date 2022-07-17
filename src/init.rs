@@ -19,6 +19,7 @@ use std::process::Command;
 use std::process::Output;
 use std::str;
 use std::str::Utf8Error;
+use std::string::ToString;
 
 use snafu::OptionExt;
 use snafu::ResultExt;
@@ -34,8 +35,16 @@ pub fn parse_templates_source(raw_source: &str)
         .context(SplitTemplatesSourceFailed)?;
 
     if parts.scheme == "git" {
-        Ok(TemplatesSource::Git(GitTemplatesSource::new(parts.addr)))
+        let source = GitTemplatesSource::new(parts.addr, parts.reference);
+
+        Ok(TemplatesSource::Git(source))
     } else if parts.scheme == "dir" {
+        if parts.reference != "-" {
+            return Err(ParseTemplatesSourceError::UnsupportedDirReference{
+                reference: parts.reference,
+            });
+        }
+
         Ok(TemplatesSource::Dir(DirTemplatesSource::new(parts.addr)))
     } else {
         Err(ParseTemplatesSourceError::UnsupportedSourceType{
@@ -48,6 +57,12 @@ pub fn parse_templates_source(raw_source: &str)
 pub enum ParseTemplatesSourceError {
     #[snafu(display("Couldn't split the templates source: {}", source))]
     SplitTemplatesSourceFailed{source: SplitTemplatesSourceError},
+    #[snafu(display(
+        "'{}' can't be used as a reference for the 'dir' scheme (only '-' is \
+         supported)",
+        reference,
+    ))]
+    UnsupportedDirReference{reference: String},
     #[snafu(display("Unsupported templates source scheme: {}", source_scheme))]
     UnsupportedSourceType{source_scheme: String},
 }
@@ -58,14 +73,15 @@ fn split_templates_source(raw_source: &str)
     let parts: Vec<&str> = raw_source.split(':').collect();
 
     let n = parts.len();
-    if n < 2 {
+    if n < 3 {
         // TODO Add `n` to this error.
         return Err(SplitTemplatesSourceError::TooFewColons);
     }
 
     Ok(TemplatesSourceParts{
         scheme: parts[0].to_string(),
-        addr: parts[1..n].join(":"),
+        addr: parts[1..n-1].join(":"),
+        reference: parts[n-1].to_string(),
     })
 }
 
@@ -78,6 +94,7 @@ pub enum SplitTemplatesSourceError {
 struct TemplatesSourceParts {
     scheme: String,
     addr: String,
+    reference: String,
 }
 
 pub enum TemplatesSource {
@@ -108,16 +125,35 @@ pub enum CloneToError {
 
 pub struct GitTemplatesSource {
     url: String,
+    reference: String,
 }
 
 impl GitTemplatesSource {
-    fn new(url: String) -> Self {
-        Self{url}
+    fn new(url: String, reference: String) -> Self {
+        Self{url, reference}
     }
 
     fn clone_to(&self, dir: &Path) -> Result<(), GitCloneToError> {
-        assert_run_in_dir(dir, "git", &["clone", self.url.as_str(), "."])
-            .context(GitCloneFailed{url: self.url.clone()})?;
+        // This optimised flow for cloning a single reference is taken from
+        // <https://stackoverflow.com/a/71911631>.
+
+        let arg_groups = &[
+            vec!["clone", "--depth=1", &self.url, "."],
+            vec!["fetch", "--depth=1", "origin", &self.reference],
+            vec!["checkout", &self.reference],
+        ];
+
+        for args in arg_groups {
+            assert_run_in_dir(dir, "git", args)
+                .with_context(|| {
+                    let args: Vec<String> =
+                        args.iter()
+                            .map(ToString::to_string)
+                            .collect();
+
+                    GitCommandFailed{args}
+                })?;
+        }
 
         Ok(())
     }
@@ -125,9 +161,13 @@ impl GitTemplatesSource {
 
 #[derive(Debug, Snafu)]
 pub enum GitCloneToError {
-    #[snafu(display("Couldn't clone Git repository '{}': {}", url, source))]
+    #[snafu(display(
+        "Git command failed ('git {}'): {}",
+        args.join(" "),
+        source,
+    ))]
     // TODO Consider whether to include `url` in this variant.
-    GitCloneFailed{source: AssertRunError, url: String},
+    GitCommandFailed{source: AssertRunError, args: Vec<String>},
 }
 
 pub struct DirTemplatesSource {
