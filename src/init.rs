@@ -25,6 +25,8 @@ use snafu::OptionExt;
 use snafu::ResultExt;
 use snafu::Snafu;
 
+use crate::canon_path::NewRelPathError;
+use crate::canon_path::RelPath;
 use crate::run_in;
 use crate::run_in::AssertRunError;
 
@@ -34,23 +36,30 @@ pub fn parse_templates_source(raw_source: &str)
     let parts = split_templates_source(raw_source)
         .context(SplitTemplatesSourceFailed)?;
 
-    if parts.scheme == "git" {
-        let source = GitTemplatesSource::new(parts.addr, parts.reference);
+    let scheme =
+        if parts.scheme == "git" {
+            let source = GitTemplatesSource::new(parts.addr, parts.reference);
 
-        Ok(TemplatesSource::Git(source))
-    } else if parts.scheme == "dir" {
-        if parts.reference != "-" {
-            return Err(ParseTemplatesSourceError::UnsupportedDirReference{
-                reference: parts.reference,
+            TemplatesSourceScheme::Git(source)
+        } else if parts.scheme == "dir" {
+            if parts.reference != "-" {
+                return Err(ParseTemplatesSourceError::UnsupportedDirReference{
+                    reference: parts.reference,
+                });
+            }
+
+            TemplatesSourceScheme::Dir(DirTemplatesSource::new(parts.addr))
+        } else {
+            return Err(ParseTemplatesSourceError::UnsupportedSourceType{
+                source_scheme: parts.scheme,
             });
-        }
+        };
 
-        Ok(TemplatesSource::Dir(DirTemplatesSource::new(parts.addr)))
-    } else {
-        Err(ParseTemplatesSourceError::UnsupportedSourceType{
-            source_scheme: parts.scheme,
-        })
-    }
+    let subdir_path = PathBuf::from(parts.subdir);
+    let subdir = RelPath::try_from(subdir_path.clone())
+        .context(SubdirToRelPathFailed{subdir_path})?;
+
+    Ok(TemplatesSource{scheme, subdir})
 }
 
 #[derive(Debug, Snafu)]
@@ -65,6 +74,12 @@ pub enum ParseTemplatesSourceError {
     UnsupportedDirReference{reference: String},
     #[snafu(display("Unsupported templates source scheme: {}", source_scheme))]
     UnsupportedSourceType{source_scheme: String},
+    #[snafu(display(
+        "Couldn't convert '{}' to a relative path: {}",
+        subdir_path.display(),
+        source,
+    ))]
+    SubdirToRelPathFailed{source: NewRelPathError, subdir_path: PathBuf}
 }
 
 fn split_templates_source(raw_source: &str)
@@ -73,15 +88,16 @@ fn split_templates_source(raw_source: &str)
     let parts: Vec<&str> = raw_source.split(':').collect();
 
     let n = parts.len();
-    if n < 3 {
+    if n < 4 {
         // TODO Add `n` to this error.
         return Err(SplitTemplatesSourceError::TooFewColons);
     }
 
     Ok(TemplatesSourceParts{
         scheme: parts[0].to_string(),
-        addr: parts[1..n-1].join(":"),
-        reference: parts[n-1].to_string(),
+        addr: parts[1..n-2].join(":"),
+        reference: parts[n-2].to_string(),
+        subdir: parts[n-1].to_string(),
     })
 }
 
@@ -95,14 +111,20 @@ struct TemplatesSourceParts {
     scheme: String,
     addr: String,
     reference: String,
+    subdir: String,
 }
 
-pub enum TemplatesSource {
+pub struct TemplatesSource {
+    scheme: TemplatesSourceScheme,
+    subdir: RelPath,
+}
+
+pub enum TemplatesSourceScheme {
     Git(GitTemplatesSource),
     Dir(DirTemplatesSource),
 }
 
-impl TemplatesSource {
+impl TemplatesSourceScheme {
     fn clone_to(&self, dir: &Path) -> Result<(), CloneToError> {
         match self {
             Self::Git(s) =>
@@ -238,10 +260,13 @@ pub fn init(
     let raw_tmp_dir = raw_tmp_dir.trim_end();
     let tmp_dir = PathBuf::from(raw_tmp_dir);
 
-    source.clone_to(&tmp_dir)
+    source.scheme.clone_to(&tmp_dir)
         .context(CloneSourceFailed{dest: tmp_dir.clone()})?;
 
+    let subdir: PathBuf = source.subdir.iter().collect();
+
     let mut template_dir = tmp_dir;
+    template_dir.push(subdir);
     template_dir.push(template);
 
     fs_deep_copy(logger, &template_dir, target_dir)

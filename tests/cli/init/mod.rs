@@ -34,7 +34,7 @@ fn init_outputs_created_files() {
     assert_init_git_repo(&test_source_dir);
     // (5)
     let test_dir = test_setup::assert_create_dir(root_test_dir, "dir");
-    let source = format!("git:{}:master", test_source_dir);
+    let source = format!("git:{}:master:.", test_source_dir);
 
     let cmd_result =
         run_test_cmd(&test_dir, &["init", "--source", &source, "templ"]);
@@ -70,7 +70,7 @@ fn init_creates_env() {
     assert_init_git_repo(&test_source_dir);
     // (5)
     let test_dir = test_setup::assert_create_dir(root_test_dir, "dir");
-    let source = format!("git:{}:master", test_source_dir);
+    let source = format!("git:{}:master:.", test_source_dir);
     // (6)
     assert_test_cmd(&test_dir, &["init", "--source", &source, "templ"]);
 
@@ -197,7 +197,7 @@ fn init_exits_if_dock_file_exists() {
     let dock_file = test_dir.clone() + "/dock.yaml";
     // (6)
     assert_run::assert_run_stdout("touch", &[dock_file.as_str()]);
-    let source = format!("git:{}:master", test_source_dir);
+    let source = format!("git:{}:master:.", test_source_dir);
 
     let cmd_result =
         run_test_cmd(&test_dir, &["init", "--source", &source, "templ"]);
@@ -238,7 +238,7 @@ fn init_doesnt_overwrite_existing_files() {
     let dockerfile_path = format!("{}/{}", test_dir, dockerfile_name);
     // (7)
     assert_run::assert_run_stdout("touch", &[dockerfile_path.as_str()]);
-    let source = format!("git:{}:master", test_source_dir);
+    let source = format!("git:{}:master:.", test_source_dir);
 
     let cmd_result =
         run_test_cmd(&test_dir, &["init", "--source", &source, "templ"]);
@@ -277,7 +277,7 @@ fn init_with_dir_source() {
     let test_source_dir = create_templates_dir(&root_test_dir, test_name);
     // (5)
     let test_dir = test_setup::assert_create_dir(root_test_dir, "dir");
-    let source = format!("dir:{}:-", test_source_dir);
+    let source = format!("dir:{}:-:.", test_source_dir);
     // (6)
     assert_test_cmd(&test_dir, &["init", "--source", &source, "templ"]);
 
@@ -313,7 +313,7 @@ fn init_with_dir_in_template() {
     test_setup::assert_write_fs_state(test_templ_dir.as_str(), fs_state);
     // (3)
     let test_dir = test_setup::assert_create_dir(root_test_dir, "dir");
-    let source = format!("dir:{}:-", test_source_dir);
+    let source = format!("dir:{}:-:.", test_source_dir);
 
     let cmd_result =
         run_test_cmd(&test_dir, &["init", "--source", &source, "templ"]);
@@ -349,7 +349,7 @@ fn init_with_dir_in_template_and_dir_exists() {
     // (4)
     fs::create_dir(format!("{}/nonempty_dir", test_dir))
         .expect("couldn't create \"non-empty\" directory");
-    let source = format!("dir:{}:-", test_source_dir);
+    let source = format!("dir:{}:-:.", test_source_dir);
 
     let cmd_result =
         run_test_cmd(&test_dir, &["init", "--source", &source, "templ"]);
@@ -387,7 +387,7 @@ fn init_from_old_git_tag() {
     assert_git_add_commit(&test_source_dir, "Second commit");
     // (7)
     let test_dir = test_setup::assert_create_dir(root_test_dir, "dir");
-    let source = format!("git:{}:v1", test_source_dir);
+    let source = format!("git:{}:v1:.", test_source_dir);
     // (8)
     assert_test_cmd(&test_dir, &["init", "--source", &source, "templ"]);
 
@@ -450,7 +450,7 @@ fn init_from_new_git_tag() {
     assert_run::assert_run_in_dir(&test_source_dir, "git", &["tag", "v2"]);
     // (8)
     let test_dir = test_setup::assert_create_dir(root_test_dir, "dir");
-    let source = format!("git:{}:v2", test_source_dir);
+    let source = format!("git:{}:v2:.", test_source_dir);
     // (9)
     assert_test_cmd(&test_dir, &["init", "--source", &source, "templ"]);
 
@@ -464,4 +464,82 @@ fn init_from_new_git_tag() {
         .stderr("")
         // (C)
         .stdout(format!("{}.v2\n", test_name));
+}
+
+#[test]
+// Given (1) a directory `<source>` containing `a/b/<templ>`
+//     AND (2) `<templ>` contains a dock file defining `<env>`
+//     AND (3) `<templ>` contains a Dockerfile named `<env>.Dockerfile`
+//     AND (4) `<env>.Dockerfile` creates a test file `<test>`
+//     AND (5) an empty test directory `<dir>` exists
+//     AND (6) `dock init --source <source>:./a/b <templ>` is run in `<dir>`
+// When `dock run-in <env> cat <test>` is run in `<dir>`
+// Then (A) the command is successful
+//     AND (B) the command STDERR is empty
+//     AND (C) the command STDOUT contains the contents of `<test>`
+fn init_with_subdir() {
+    let test_name = "init_with_subdir";
+    let root_test_dir = test_setup::assert_create_root_dir(test_name);
+    // (1) (2) (3) (4)
+    let test_source_dir = create_templates_subdir(&root_test_dir, test_name);
+    // (5)
+    let test_dir = test_setup::assert_create_dir(root_test_dir, "dir");
+    let source = format!("dir:{}:-:./a/b", test_source_dir);
+    // (6)
+    assert_test_cmd(&test_dir, &["init", "--source", &source, "templ"]);
+
+    let cmd_result =
+        run_test_cmd(&test_dir, &["run-in", test_name, "cat", "/test.txt"]);
+
+    cmd_result
+        // (A)
+        .code(0)
+        // (B)
+        .stderr("")
+        // (C)
+        .stdout(format!("{}\n", test_name));
+}
+
+// TODO Mostly duplicated from `create_templates_dir`.
+fn create_templates_subdir(root_test_dir: &str, test_name: &str) -> String {
+    let test_dock_yaml = formatdoc!{
+        "
+            schema_version: '0.1'
+            organisation: org
+            project: proj
+            default_shell_env: {test_name}
+
+            environments:
+              {test_name}:
+                mount_local:
+                - user
+        ",
+        test_name = test_name,
+    };
+    let test_dockerfile_name = test_name.to_string() + ".Dockerfile";
+    let test_build_dockerfile = formatdoc!{
+        "
+            FROM {test_base_img}
+
+            RUN echo '{test_name}' > /test.txt
+        ",
+        test_base_img = test_setup::TEST_BASE_IMG,
+        test_name = test_name,
+    };
+    let fs_state = &hashmap!{
+        "dock.yaml" => test_dock_yaml.as_str(),
+        test_dockerfile_name.as_str() => test_build_dockerfile.as_str(),
+    };
+    let test_source_dir =
+        test_setup::assert_create_dir(root_test_dir.to_string(), "templates");
+
+    let mut dir = test_source_dir.clone();
+    for name in &["a", "b"] {
+        dir = test_setup::assert_create_dir(dir, name);
+    }
+
+    let test_templ_dir = test_setup::assert_create_dir(dir, "templ");
+    test_setup::assert_write_fs_state(test_templ_dir.as_str(), fs_state);
+
+    test_source_dir
 }
