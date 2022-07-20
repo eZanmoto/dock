@@ -13,8 +13,6 @@ test_base_img_name := test_org + '/' + test_proj + '_base'
 test_base_img_tag := 'latest'
 test_vol_namespace := test_org + '.' + test_proj
 
-export DOCK_DEFAULT_TEMPLATES_SOURCE := 'git:git@github.com:ezanmoto/dock.git'
-
 # These are passed to `cargo test` and `cargo clippy` to provide parameters to
 # test files.
 export TEST_ORG := test_org
