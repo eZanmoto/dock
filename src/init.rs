@@ -323,6 +323,7 @@ fn fs_deep_copy(logger: &mut dyn FileActionLogger, src: &Path, tgt: &Path)
                 })?;
             let tgt = tgt.join(rel_path);
 
+            let mut action = FileAction::Create;
             if file_type.is_dir() {
                 let result = fs::create_dir(&tgt);
 
@@ -333,21 +334,18 @@ fn fs_deep_copy(logger: &mut dyn FileActionLogger, src: &Path, tgt: &Path)
                             path: tgt.clone(),
                         });
                     }
+
+                    action = FileAction::Skip;
                 }
+            } else if tgt.exists() {
+                action = FileAction::Skip;
             } else {
-                if tgt.exists() {
-                    // We ignore the error returned from logging the action.
-                    mem::drop(logger.log_file_action(&tgt, FileAction::Skip));
-
-                    return Ok(());
-                }
-
                 fs::copy(&entry_path, &tgt)
                     .context(CopyFileFailed{path: entry_path})?;
             }
 
             // We ignore the error returned from logging the action.
-            mem::drop(logger.log_file_action(&tgt, FileAction::Create));
+            mem::drop(logger.log_file_action(&tgt, action));
 
             Ok(())
         },
