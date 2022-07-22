@@ -6,6 +6,15 @@ use std::str;
 
 use crate::assert_cmd::Command as AssertCommand;
 
+pub fn assert_run_in_dir(dir: &str, prog: &str, args: &[&str]) {
+    let mut cmd = AssertCommand::new(prog);
+    cmd.args(args);
+    cmd.env_clear();
+    cmd.current_dir(dir);
+
+    cmd.assert().code(0);
+}
+
 pub fn assert_run_stdout(prog: &str, args: &[&str]) -> String {
     assert_run_output(prog, args).stdout
 }

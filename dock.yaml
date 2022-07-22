@@ -3,9 +3,9 @@
 # licence that can be found in the LICENCE file.
 
 schema_version: '0.1'
-organisation: 'ezanmoto'
-project: 'dock'
-default_shell_env: 'cross'
+organisation: ezanmoto
+project: dock
+default_shell_env: cross
 
 environments:
   cross:

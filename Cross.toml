@@ -1,0 +1,4 @@
+[build.env]
+passthrough = [
+    "DOCK_DEFAULT_TEMPLATES_SOURCE",
+]

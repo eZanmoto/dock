@@ -2,6 +2,7 @@
 // Use of this source code is governed by an MIT
 // licence that can be found in the LICENCE file.
 
+mod init;
 pub mod rebuild;
 mod run_in;
 mod shell;

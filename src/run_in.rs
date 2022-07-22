@@ -750,7 +750,7 @@ pub enum RunCommandError {
     ConvertStdoutToUtf8Failed{source: Utf8Error, stdout_bytes: Vec<u8>},
 }
 
-fn assert_run<I, S>(prog: &str, args: I) -> Result<Output, AssertRunError>
+pub fn assert_run<I, S>(prog: &str, args: I) -> Result<Output, AssertRunError>
 where
     I: IntoIterator<Item = S>,
     S: AsRef<OsStr>,

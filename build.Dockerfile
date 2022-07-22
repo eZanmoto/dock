@@ -37,3 +37,5 @@ RUN \
             --mode 755 \
             '/tmp/just/just' \
             '/usr/local/bin'
+
+ENV DOCK_DEFAULT_TEMPLATES_SOURCE git:https://github.com/ezanmoto/dock_init_templates.git:0.1:./templates

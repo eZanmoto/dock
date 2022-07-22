@@ -28,6 +28,9 @@ the ideas captured by this project.
 Overview
 --------
 
+* `dock init` initialises a directory to be used with `dock`, usually by adding
+  a new `dock.yaml` and `build.Dockerfile`, which are pre-configured for a given
+  programming language.
 * `dock run-in` runs once-off commands in a given container environment, and is
   generally expected to be run in a CI (non-interactive) environment.
 * `dock shell` spawns a shell in a given container environment, and is generally
@@ -52,6 +55,35 @@ Usage
 ### `dock`
 
 `dock` runs the `shell` subcommand by default if no subcommand is given.
+
+### `dock init`
+
+`dock init` takes a template name, which is usually the name of a programming
+language, and initialises the current directory for use with Dock. This will
+usually result in a new `dock.yaml` and `build.Dockerfile` being added to the
+current directory. For example:
+
+    $ find .
+    .
+    ./src
+    ./src/main.rs
+
+    $ cargo run
+    The program 'cargo' is currently not installed. You can install it by typing:
+    sudo apt install cargo
+
+    $ dock init rust
+    Created './Cargo.toml'
+    Skipped './src'
+    Skipped './src/main.rs'
+    Created './build.Dockerfile'
+    Created './dock.yaml'
+
+    $ dock run-in build-env: cargo run
+       Compiling proj v0.0.1 (/app)
+        Finished dev [unoptimized + debuginfo] target(s) in 1.00s
+         Running `target/debug/proj`
+    hello, world!
 
 ### `dock rebuild`
 
@@ -84,9 +116,9 @@ defined in a separate `build.Dockerfile`, and which also has the following
 
 ``` yaml
 schema_version: '0.1'
-organisation: 'ezanmoto'
-project: 'dock'
-default_shell_env: 'build'
+organisation: ezanmoto
+project: dock
+default_shell_env: build
 
 environments:
   build: {}
@@ -109,9 +141,9 @@ the environment block. All fields in the environment block are optional.
 
 ``` yaml
 schema_version: '0.1'
-organisation: 'ezanmoto'
-project: 'dock'
-default_shell_env: 'build'
+organisation: ezanmoto
+project: dock
+default_shell_env: build
 
 environments:
   build:
@@ -306,6 +338,9 @@ environment by running the following:
     bash scripts/with_build_env.sh bash
 
 ### Building
+
+Note that the environment variable `DOCK_DEFAULT_TEMPLATES_SOURCE` must be set
+in order to build the project.
 
 The project can be built locally using `cargo build --locked`, or can be built
 using Docker by running the following:

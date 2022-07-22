@@ -878,6 +878,8 @@ fn cache_volume_has_open_permission() {
     cmd_result.code(0);
 }
 
+// TODO Add test that creating a file in a non-cache volume fails.
+
 #[test]
 // Given (1) the dock file defines an empty environment called `<env>`
 // When `run-in --debug <env> echo hello` is run
