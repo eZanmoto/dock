@@ -497,23 +497,9 @@ fn prepare_run_in_args(
         }
     }
 
-    let cur_hostpaths = hostpaths()
-        .context(GetHostpathsFailed)?;
-
-    if let Some(mount_local) = &env.mount_local {
-        let args = prepare_run_mount_local_args(
-            mount_local,
-            dock_dir,
-            &cur_hostpaths,
-            &env.workdir,
-        )
-            .context(PrepareRunInMountLocalArgsFailed)?;
-
-        run_args.extend(args);
-    }
-
+    // TODO Add tests for nested mounting.
+    let mut parsed_mounts = vec![];
     if let Some(mounts) = &env.mounts {
-        let mut parsed_mounts = vec![];
         for (rel_outer_path, inner_path) in mounts.iter() {
             let rel_outer_path =
                 RelPath::try_from(rel_outer_path.clone())
@@ -522,8 +508,31 @@ fn prepare_run_in_args(
                         inner_path,
                     })?;
 
-            parsed_mounts.push((rel_outer_path, inner_path));
+            parsed_mounts.push((rel_outer_path, inner_path.clone()));
         }
+    }
+
+    if let Some(mount_local) = &env.mount_local {
+        // TODO Add tests for nested mounting of the project directory.
+        if mount_local.contains(&DockEnvironmentMountLocalConfig::ProjectDir) {
+            let raw_workdir = env.workdir.as_ref()
+                .context(WorkdirNotSet)?;
+
+            let cur_dir = RelPath::from(vec![]);
+            let workdir = PathBuf::from(raw_workdir);
+
+            parsed_mounts.push((cur_dir, workdir));
+        }
+
+        let args = prepare_mount_local_run_args(mount_local)
+            .context(PrepareRunInMountLocalArgsFailed)?;
+
+        run_args.extend(args);
+    }
+
+    if !parsed_mounts.is_empty() {
+        let cur_hostpaths = hostpaths()
+            .context(GetHostpathsFailed)?;
 
         let args =
             prepare_run_mount_args(dock_dir, &parsed_mounts, &cur_hostpaths)
@@ -547,6 +556,8 @@ pub enum PrepareRunInArgsError {
     PrepareRunInCacheVolumesArgsFailed{
         source: PrepareRunInCacheVolumesArgsError,
     },
+    #[snafu(display("`workdir` is required when `project_dir` is mounted"))]
+    WorkdirNotSet,
     #[snafu(display(
         "Couldn't prepare \"local mount\" arguments for `docker run`: {}",
         source,
@@ -638,11 +649,8 @@ pub enum PrepareRunInCacheVolumesArgsError {
     ChangeCacheOwnershipFailed{source: DockerAssertRunError},
 }
 
-fn prepare_run_mount_local_args(
+fn prepare_mount_local_run_args(
     mount_local: &[DockEnvironmentMountLocalConfig],
-    dock_dir: &AbsPath,
-    cur_hostpaths: &Option<Hostpaths>,
-    workdir: &Option<String>,
 )
     -> Result<Vec<String>, PrepareRunInMountLocalArgsError>
 {
@@ -680,23 +688,6 @@ fn prepare_run_mount_local_args(
         ]));
     }
 
-    if mount_local.contains(&DockEnvironmentMountLocalConfig::ProjectDir) {
-        // TODO Add `cur_hostpaths` to the error context. See the comment
-        // above `NoPathRouteOnHost` for more details.
-        let proj_dir_host_path = apply_hostpath(cur_hostpaths, dock_dir)
-            .context(NoProjectPathRouteOnHost)?;
-
-        let proj_dir_cli_arg = proj_dir_host_path.display()
-            .context(RenderProjectDirFailed{dir: proj_dir_host_path})?;
-
-        let workdir = workdir.as_ref()
-            .context(WorkdirNotSet)?;
-
-        let mount_spec =
-            format!( "type=bind,src={},dst={}", proj_dir_cli_arg, workdir);
-        args.push(format!("--mount={}", mount_spec));
-    }
-
     Ok(args)
 }
 
@@ -711,15 +702,6 @@ pub enum PrepareRunInMountLocalArgsError {
     GroupMountedWithoutUser,
     #[snafu(display("Couldn't get metadata for Docker socket: {}", source))]
     GetDockerSockMetadataFailed{source: IoError},
-    #[snafu(display("No route to the project path was found on the host"))]
-    NoProjectPathRouteOnHost,
-    #[snafu(display(
-        "Couldn't render the project directory (lossy rendering: '{}')",
-        dir.display_lossy(),
-    ))]
-    RenderProjectDirFailed{dir: AbsPath},
-    #[snafu(display("`workdir` is required when `project_dir` is mounted"))]
-    WorkdirNotSet,
 }
 
 fn to_strings(strs: &[&str]) -> Vec<String> {
@@ -778,7 +760,7 @@ pub enum AssertRunError {
 
 fn prepare_run_mount_args(
     dock_dir: &AbsPath,
-    mounts: &[(RelPath, &PathBuf)],
+    mounts: &[(RelPath, PathBuf)],
     cur_hostpaths: &Option<Hostpaths>,
 )
     -> Result<Vec<String>, PrepareRunInMountArgsError>
