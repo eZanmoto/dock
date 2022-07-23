@@ -38,6 +38,23 @@ Overview
 * `dock rebuild` is intended to be used like `docker build`, but removes the old
   image associated with the given tag if the build is successful.
 
+### Where should Dock be run?
+
+`dock rebuild` and `dock run-in` should ideally be used in both local
+development environments and in build pipelines. This can simplify and speed up
+development, as well as making it easier to run local code in the same way as it
+runs in the build pipeline, which can help debug issues in the build pipeline.
+
+`dock init ` and `dock shell` are primarily intended to be run in local
+development environments.
+
+`dock` can be used to build images for production use, but it shouldn't be used
+to directly run production services. This is because the features that it
+provides are primarily for speeding up development, particularly through the use
+of bind mounts (volumes are generally more appropriate for production
+scenarios). Instead, a dedicated container orchestrator like [Docker
+Compose](https://docs.docker.com/compose/) should be used for this purpose.
+
 Installation
 ------------
 
