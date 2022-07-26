@@ -35,8 +35,6 @@ use crate::canon_path::RelPath;
 use crate::cmd_loggers::CapturingCmdLogger;
 use crate::cmd_loggers::StdCmdLogger;
 use crate::cmd_loggers::TimingPrefixingCmdLogger;
-use crate::docker;
-use crate::docker::AssertRunError as DockerAssertRunError;
 use crate::fs;
 use crate::fs::FindAndOpenFileError;
 use crate::logging_process;
@@ -193,7 +191,13 @@ pub fn run_in(
     }
 
     let main_run_args =
-        prepare_run_in_args(env, &dock_dir, &vol_name_prefix, &target_img)
+        prepare_run_in_args(
+            logger,
+            env,
+            &dock_dir,
+            &vol_name_prefix,
+            &target_img,
+        )
             .context(PrepareRunInArgsFailed)?;
 
     run_args.extend(main_run_args);
@@ -462,6 +466,7 @@ pub enum NewDockerContextError {
 }
 
 fn prepare_run_in_args(
+    logger: &mut dyn CommandLogger,
     env: &DockEnvironmentConfig,
     dock_dir: &AbsPath,
     vol_name_prefix: &str,
@@ -476,6 +481,7 @@ fn prepare_run_in_args(
 
     if let Some(cache_volumes) = &env.cache_volumes {
         let args = prepare_run_cache_volumes_args(
+            logger,
             cache_volumes,
             vol_name_prefix,
             target_img,
@@ -588,6 +594,7 @@ pub enum PrepareRunInArgsError {
 // changes their permissions. This responsibility should ideally be moved to a
 // dedicated function of its own.
 fn prepare_run_cache_volumes_args(
+    logger: &mut dyn CommandLogger,
     cache_volumes: &HashMap<String, PathBuf>,
     vol_name_prefix: &str,
     target_img: &str,
@@ -608,7 +615,7 @@ fn prepare_run_cache_volumes_args(
             format!("type=volume,src={},dst={}", vol_name, path_cli_arg);
         let mount_arg = format!("--mount={}", mount_spec);
 
-        docker::assert_run(&[
+        let raw_docker_args = &[
             "run",
             "--rm",
             "--user=root",
@@ -623,13 +630,23 @@ fn prepare_run_cache_volumes_args(
             "-R",
             "0777",
             &path_cli_arg,
-        ])
+        ];
+        let prog = OsStr::new("docker");
+        let docker_args = new_os_strs(raw_docker_args);
+        logging_process::run(logger, prog, &docker_args, Stdio::null())
             .context(ChangeCacheOwnershipFailed)?;
 
         args.push(mount_arg);
     }
 
     Ok(args)
+}
+
+fn new_os_strs<'a>(strs: &'a [&'a str]) -> Vec<&'a OsStr> {
+    strs
+        .iter()
+        .map(OsStr::new)
+        .collect()
 }
 
 #[allow(clippy::enum_variant_names)]
@@ -646,7 +663,7 @@ pub enum PrepareRunInCacheVolumesArgsError {
     ))]
     RenderCacheVolDirFailed{dir: AbsPath},
     #[snafu(display("Couldn't set the ownership of the cache: {}", source))]
-    ChangeCacheOwnershipFailed{source: DockerAssertRunError},
+    ChangeCacheOwnershipFailed{source: LoggingProcessRunError},
 }
 
 fn prepare_mount_local_run_args(
