@@ -20,8 +20,10 @@ pub trait CommandLogger {
 
 pub enum CmdLoggerMsg<'a> {
     Cmd(&'a [&'a OsStr]),
+    Start,
     StdoutWrite(&'a [u8]),
     StderrWrite(&'a [u8]),
+    Exit,
 }
 
 #[tokio::main(flavor = "current_thread")]
@@ -44,6 +46,8 @@ pub async fn run(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .stdin(stdin);
+
+    logger.log(CmdLoggerMsg::Start);
 
     let mut child = cmd.spawn()
         .context(SpawnFailed)?;
@@ -78,6 +82,8 @@ pub async fn run(
                 let status = result
                     .context(WaitFailed)?;
 
+                logger.log(CmdLoggerMsg::Exit);
+
                 wait_status = Some(status);
             },
         }
@@ -86,7 +92,6 @@ pub async fn run(
     // `unwrap` is safe here because we assert that `wait_status` is not `None`
     // via the exit condition of `while`.
     Ok(wait_status.unwrap())
-
 }
 
 #[allow(clippy::enum_variant_names)]

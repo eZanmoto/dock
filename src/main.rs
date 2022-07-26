@@ -35,6 +35,7 @@ use cmd_loggers::Prefixer;
 use cmd_loggers::PrefixingCmdLogger;
 use cmd_loggers::StdCmdLogger;
 use cmd_loggers::Stream;
+use cmd_loggers::TimingPrefixingCmdLogger;
 use init::FileAction;
 use init::FileActionLogger;
 use init::InitError;
@@ -297,12 +298,15 @@ fn handle_run_in(
 
     let loggers =
         if debug {
-            CmdLoggers::Debugging(PrefixingCmdLogger::new(
+            let logger = PrefixingCmdLogger::new(
                 &mut stdout,
                 b"[$] ",
                 Prefixer::new(b"[>] "),
                 Prefixer::new(b"[!] "),
-            ))
+            );
+            let timing_logger = TimingPrefixingCmdLogger::new(logger, b"[@] ");
+
+            CmdLoggers::Debugging(timing_logger)
         } else {
             CmdLoggers::Streaming{
                 capturing: CapturingCmdLogger::new(),

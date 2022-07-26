@@ -5,6 +5,7 @@
 use std::os::unix::ffi::OsStrExt;
 use std::io::Error as IoError;
 use std::io::Write;
+use std::time::Instant;
 
 use crate::logging_process::CmdLoggerMsg;
 use crate::logging_process::CommandLogger;
@@ -28,15 +29,70 @@ impl CapturingCmdLogger {
 impl CommandLogger for CapturingCmdLogger {
     fn log(&mut self, msg: CmdLoggerMsg) {
         match msg {
-            CmdLoggerMsg::Cmd(_) => {
-            },
             CmdLoggerMsg::StdoutWrite(bs) => {
                 self.chunks.push((Stream::Stdout, bs.to_vec()));
             },
             CmdLoggerMsg::StderrWrite(bs) => {
                 self.chunks.push((Stream::Stderr, bs.to_vec()));
             },
+            _ => {
+            },
         };
+    }
+}
+
+pub struct TimingPrefixingCmdLogger<'a> {
+    logger: PrefixingCmdLogger<'a>,
+    duration_prefix: &'a [u8],
+    started: Option<Instant>,
+    pub err: Option<IoError>,
+}
+
+impl<'a> TimingPrefixingCmdLogger<'a> {
+    pub fn new(
+        logger: PrefixingCmdLogger<'a>,
+        duration_prefix: &'a [u8],
+    ) -> Self {
+        Self{
+            logger,
+            duration_prefix,
+            started: None,
+            err: None,
+        }
+    }
+
+    fn try_log(&mut self, msg: &CmdLoggerMsg) -> Result<(), IoError> {
+        // TODO Perform line buffering.
+        match msg {
+            CmdLoggerMsg::Start => {
+                // TODO Return an error if `started` already had a value.
+                self.started = Some(Instant::now());
+            },
+            CmdLoggerMsg::Exit => {
+                // TODO Handle the case where `self.started` is `None`.
+                let started = self.started.unwrap();
+                let duration = format!("{:?}\n", started.elapsed());
+
+                self.logger.w.write_all(self.duration_prefix)?;
+                self.logger.w.write_all(duration.as_bytes())?;
+            },
+            _ => {
+            },
+        }
+
+        self.logger.try_log(msg)
+    }
+}
+
+impl<'a> CommandLogger for TimingPrefixingCmdLogger<'a> {
+    fn log(&mut self, msg: CmdLoggerMsg) {
+        if self.err.is_some() {
+            return;
+        }
+
+        if let Err(e) = self.try_log(&msg) {
+            self.err = Some(e);
+        }
     }
 }
 
@@ -55,7 +111,7 @@ impl<'a> PrefixingCmdLogger<'a> {
         stdout_prefixer: Prefixer<'a>,
         stderr_prefixer: Prefixer<'a>,
     ) -> Self {
-        PrefixingCmdLogger{
+        Self{
             w,
             cmd_prefix,
             stdout_prefixer,
@@ -82,6 +138,8 @@ impl<'a> PrefixingCmdLogger<'a> {
             },
             CmdLoggerMsg::StderrWrite(bs) => {
                 self.w.write_all(&self.stderr_prefixer.prefix(bs))?;
+            },
+            _ => {
             },
         }
 
@@ -162,8 +220,6 @@ impl<'a> StdCmdLogger<'a> {
 
     fn try_log(&mut self, msg: &CmdLoggerMsg) -> Result<(), IoError> {
         match msg {
-            CmdLoggerMsg::Cmd(_) => {
-            },
             CmdLoggerMsg::StdoutWrite(bs) => {
                 self.stdout.write_all(bs)?;
                 self.stdout.flush()?;
@@ -171,6 +227,8 @@ impl<'a> StdCmdLogger<'a> {
             CmdLoggerMsg::StderrWrite(bs) => {
                 self.stderr.write_all(bs)?;
                 self.stderr.flush()?;
+            },
+            _ => {
             },
         }
 

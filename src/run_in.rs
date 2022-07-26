@@ -33,8 +33,8 @@ use crate::canon_path::NewAbsPathError;
 use crate::canon_path::NewRelPathError;
 use crate::canon_path::RelPath;
 use crate::cmd_loggers::CapturingCmdLogger;
-use crate::cmd_loggers::PrefixingCmdLogger;
 use crate::cmd_loggers::StdCmdLogger;
+use crate::cmd_loggers::TimingPrefixingCmdLogger;
 use crate::docker;
 use crate::docker::AssertRunError as DockerAssertRunError;
 use crate::fs;
@@ -105,7 +105,7 @@ impl<'a> CommandLogger for SwitchingCmdLogger<'a> {
 }
 
 pub enum CmdLoggers<'a> {
-    Debugging(PrefixingCmdLogger<'a>),
+    Debugging(TimingPrefixingCmdLogger<'a>),
     Streaming{
         capturing: CapturingCmdLogger,
         streaming: StdCmdLogger<'a>,
