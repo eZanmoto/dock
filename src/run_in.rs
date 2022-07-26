@@ -175,8 +175,6 @@ pub fn run_in(
             .context(RebuildForRunInFailed)?;
     }
 
-    logger.switch();
-
     let vol_name_prefix =
         format!("{}.{}.{}", conf.organisation, conf.project, env_name);
 
@@ -209,6 +207,8 @@ pub fn run_in(
     run_args.extend(to_strings(args.command));
 
     // TODO Perform the side effects of `prepare_run_cache_volumes_args` here.
+
+    logger.switch();
 
     let prog = OsStr::new("docker");
     let args: Vec<&OsStr> =
@@ -615,6 +615,23 @@ fn prepare_run_cache_volumes_args(
             format!("type=volume,src={},dst={}", vol_name, path_cli_arg);
         let mount_arg = format!("--mount={}", mount_spec);
 
+        args.push(mount_arg.clone());
+
+        let prog = OsStr::new("docker");
+        let raw_inspect_args = &["volume", "inspect", vol_name.as_str()];
+        let inspect_args = new_os_strs(raw_inspect_args);
+        let status =
+            logging_process::run(logger, prog, &inspect_args, Stdio::null())
+                .context(CheckCacheExistenceFailed{
+                    vol_name: vol_name.clone(),
+                })?;
+
+        if status.success() {
+            // `vol_name` already exists, so we skip creating and initialising
+            // it.
+            continue;
+        }
+
         let raw_docker_args = &[
             "run",
             "--rm",
@@ -631,12 +648,9 @@ fn prepare_run_cache_volumes_args(
             "0777",
             &path_cli_arg,
         ];
-        let prog = OsStr::new("docker");
         let docker_args = new_os_strs(raw_docker_args);
         logging_process::run(logger, prog, &docker_args, Stdio::null())
-            .context(ChangeCacheOwnershipFailed)?;
-
-        args.push(mount_arg);
+            .context(ChangeCacheOwnershipFailed{vol_name})?;
     }
 
     Ok(args)
@@ -662,8 +676,24 @@ pub enum PrepareRunInCacheVolumesArgsError {
         dir.display_lossy(),
     ))]
     RenderCacheVolDirFailed{dir: AbsPath},
-    #[snafu(display("Couldn't set the ownership of the cache: {}", source))]
-    ChangeCacheOwnershipFailed{source: LoggingProcessRunError},
+    #[snafu(display(
+        "Couldn't check whether the cache volume '{}' exists: {}",
+        vol_name,
+        source,
+    ))]
+    CheckCacheExistenceFailed{
+        vol_name: String,
+        source: LoggingProcessRunError,
+    },
+    #[snafu(display(
+        "Couldn't set the ownership of the cache volume '{}': {}",
+        vol_name,
+        source,
+    ))]
+    ChangeCacheOwnershipFailed{
+        vol_name: String,
+        source: LoggingProcessRunError
+    },
 }
 
 fn prepare_mount_local_run_args(
