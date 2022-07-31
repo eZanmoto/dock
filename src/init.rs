@@ -159,27 +159,25 @@ impl GitTemplatesSource {
         // This optimised flow for cloning a single reference is taken from
         // <https://stackoverflow.com/a/71911631>.
 
-        let arg_groups = &[
-            vec!["clone", "--depth=1", &self.url, "."],
-            vec!["fetch", "--depth=1", "origin", &self.reference],
-            // We use `reset` instead of `checkout` so that both the current
-            // branch reference (`main`) and HEAD are moved, not just HEAD.
-            // This doesn't have a practical impact on the logic here, but does
-            // avoid Git's warning about being in 'detached HEAD' state.
-            vec!["reset", "--hard", &self.reference],
+        let args = vec![
+            "clone",
+            "--branch",
+            &self.reference,
+            "--no-tags",
+            "--depth=1",
+            &self.url,
+            ".",
         ];
 
-        for args in arg_groups {
-            assert_run_in_dir(dir, "git", args)
-                .with_context(|| {
-                    let args: Vec<String> =
-                        args.iter()
-                            .map(ToString::to_string)
-                            .collect();
+        assert_run_in_dir(dir, "git", &args)
+            .with_context(|| {
+                let args: Vec<String> =
+                    args.iter()
+                        .map(ToString::to_string)
+                        .collect();
 
-                    GitCommandFailed{args}
-                })?;
-        }
+                GitCommandFailed{args}
+            })?;
 
         Ok(())
     }
