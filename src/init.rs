@@ -162,7 +162,11 @@ impl GitTemplatesSource {
         let arg_groups = &[
             vec!["clone", "--depth=1", &self.url, "."],
             vec!["fetch", "--depth=1", "origin", &self.reference],
-            vec!["checkout", &self.reference],
+            // We use `reset` instead of `checkout` so that both the current
+            // branch reference (`main`) and HEAD are moved, not just HEAD.
+            // This doesn't have a practical impact on the logic here, but does
+            // avoid Git's warning about being in 'detached HEAD' state.
+            vec!["reset", "--hard", &self.reference],
         ];
 
         for args in arg_groups {
