@@ -74,7 +74,7 @@ fn main() {
         "Initialise the current directory with a Dock environment";
 
     let args =
-        Command::new("dpnd")
+        Command::new("dock")
             .version(env!("CARGO_PKG_VERSION"))
             .author(env!("CARGO_PKG_AUTHORS"))
             .about(env!("CARGO_PKG_DESCRIPTION"))
