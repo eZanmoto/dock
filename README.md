@@ -151,6 +151,11 @@ environment flag", below) will do the following, in order:
 The container is run with `--rm`, so it is automatically removed after the
 command finishes.
 
+NOTE For efficiency, `dock run-in` passes an empty context to `docker build`
+when rebuilding images, to avoid the latency incurred by sending the context to
+the Docker daemon. A context directory can be passed by configuring the
+`context` field as outlined in the next section.
+
 #### Configuration
 
 Extra parameters can be provided to the underlying `docker run` command using
@@ -164,6 +169,8 @@ default_shell_env: build
 
 environments:
   build:
+    context: ./scripts
+
     workdir: /app
 
     build_args:
@@ -196,6 +203,9 @@ environments:
 
 * `default_shell_env`: This is the environment that `dock shell` will spawn a
   shell in if no environment is provided.
+* `context`: `dock run-in` passes an empty context when rebuilding the Docker
+  image by default. This field can be used to specify a directory to send to the
+  Docker daemon as the context.
 * `workdir`: This defines the directory that the command is run in inside the
   container.
 * `build_args`: These arguments are passed to the underlying `docker build`
