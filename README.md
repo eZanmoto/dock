@@ -267,10 +267,10 @@ inside containers, back to the actual paths on the host. This can allow
 bind-mounting to be utilised to any depth of container nesting, as long as all
 paths are reachable on the host.
 
-##### `cache_mounts`
+##### `cache_volumes`
 
-`cache_mounts` exists to help in scenarios where a volume should be available to
-a container, but where the container is run with a non-`root` user. Before a
+`cache_volumes` exists to help in scenarios where a volume should be available
+to a container, but where the container is run with a non-`root` user. Before a
 container is run by `dock`, `dock` recursively updates the permissions of volume
 directories to be open (`0777`), so that they can be written to by non-`root`
 users.
@@ -283,7 +283,7 @@ permissions. Switching between users is possible during a `docker build`, but
 it's generally not recommended to mount volumes during `docker build`, so the
 solution ideally happens after this. Different options are possible, such as
 using `sudo`, `su`, scripts with sticky bits, or possibly using BuildKit, but
-`cache_mounts` can be used as a general, image-independent mechanism to handle
+`cache_volumes` can be used as a general, image-independent mechanism to handle
 this scenario.
 
 #### Flags
