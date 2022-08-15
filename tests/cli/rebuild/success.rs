@@ -2,6 +2,7 @@
 // Use of this source code is governed by an MIT
 // licence that can be found in the LICENCE file.
 
+use std::path::Path;
 use std::str;
 
 use crate::assert_run;
@@ -42,7 +43,7 @@ fn rebuild_creates_image_if_none() {
     let cmd_result = cmd.assert();
 
     // (A) (B) (C)
-    assert_docker_build(cmd_result, &test.image_tagged_name);
+    assert_build_result(cmd_result, &test.image_tagged_name);
     // (D)
     docker::assert_image_exists(&test.image_tagged_name);
     // (E)
@@ -76,7 +77,7 @@ fn assert_match_docker_run_stdout(
     assert_eq!(exp_stdout, act_stdout);
 }
 
-fn assert_docker_build(cmd_result: AssertOutput, tagged_name: &str)
+fn assert_build_result(cmd_result: AssertOutput, tagged_name: &str)
     -> DockerBuild
 {
     let cmd_result = cmd_result.code(0);
@@ -163,7 +164,7 @@ fn rebuild_replaces_old_image() {
     let cmd_result = cmd.assert();
 
     // (A) (B) (C)
-    let new_build = assert_docker_build(cmd_result, &test.image_tagged_name);
+    let new_build = assert_build_result(cmd_result, &test.image_tagged_name);
     // (D)
     assert_ne!(new_build.img_id(), old_image_id);
     // (E)
@@ -179,7 +180,7 @@ fn rebuild_replaces_old_image() {
 pub fn rebuild_img(test_defn: &Definition) -> (References, String) {
     let test = test_setup::assert_apply(test_defn);
     let mut cmd = new_test_cmd(test.dir.clone(), &test.image_tagged_name);
-    let build = assert_docker_build(cmd.assert(), &test.image_tagged_name);
+    let build = assert_build_result(cmd.assert(), &test.image_tagged_name);
 
     (test, build.img_id().to_string())
 }
@@ -216,7 +217,7 @@ fn rebuild_unchanged_context_doesnt_replace_image() {
     cmd.assert();
 
     // (A) (B) (C)
-    let new_build = assert_docker_build(cmd.assert(), &test.image_tagged_name);
+    let new_build = assert_build_result(cmd.assert(), &test.image_tagged_name);
     // (D)
     assert_eq!(new_build.img_id(), old_image_id);
 }
@@ -246,5 +247,62 @@ fn file_argument() {
     cmd.assert();
 
     // (A) (B) (C)
-    assert_docker_build(cmd.assert(), &test.image_tagged_name);
+    assert_build_result(cmd.assert(), &test.image_tagged_name);
+}
+
+#[test]
+// Given (1) the Dockerfile creates a test file
+//     AND (2) the target image doesn't already exist
+//     AND (3) the command is set up to read the Dockerfile through STDIN
+// When the `rebuild` subcommand is run
+// Then (A) the command is successful
+//     AND (B) the command STDERR is empty
+//     AND (C) the command STDOUT is formatted correctly
+//     AND (D) the target image exists
+//     AND (E) a container created from the target image contains the test file
+fn pass_dockerfile_through_stdin() {
+    let test_name = "pass_dockerfile_through_stdin";
+    let test = test_setup::assert_apply(&Definition{
+        name: test_name,
+        // (1)
+        dockerfile_steps: &formatdoc!{
+            "
+                RUN echo -n '{test_name}' > /test.txt
+            ",
+            test_name = test_name,
+        },
+        fs: &hashmap!{},
+    });
+    // (2)
+    docker::assert_remove_image(&test.image_tagged_name);
+    let dockerfile_str = &format!("{}/Dockerfile", test.dir);
+    let dockerfile = Path::new(dockerfile_str);
+    // (3)
+    let mut cmd = new_test_cmd_with_stdin(dockerfile, &test.image_tagged_name);
+
+    let cmd_result = cmd.assert();
+
+    // (A) (B) (C)
+    assert_build_result(cmd_result, &test.image_tagged_name);
+    // (D)
+    docker::assert_image_exists(&test.image_tagged_name);
+    // (E)
+    assert_match_docker_run_stdout(
+        &test.image_tagged_name,
+        &["cat", "test.txt"],
+        test_name,
+    );
+}
+
+fn new_test_cmd_with_stdin(stdin: &Path, image_tagged_name: &str)
+    -> AssertCommand
+{
+    let mut cmd = AssertCommand::cargo_bin(env!("CARGO_PKG_NAME"))
+        .expect("couldn't create command for package binary");
+    cmd.args(vec!["rebuild", image_tagged_name, "-"]);
+    cmd.pipe_stdin(stdin)
+        .expect("couldn't pipe STDIN");
+    cmd.env_clear();
+
+    cmd
 }
