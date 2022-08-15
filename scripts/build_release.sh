@@ -43,7 +43,7 @@ bash scripts/with_build_env.sh \
         -c "
             cargo \
                     build \
-                && target/debug/dock run-in cross \
+                && target/debug/dock run-in cross-env: \
                     $dock_flags \
                     cross build \
                         --release \
