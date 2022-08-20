@@ -41,6 +41,7 @@ use init::FileActionLogger;
 use init::InitError;
 use run_in::Args;
 use run_in::CmdLoggers;
+use run_in::Rebuild;
 use run_in::RebuildAction;
 use run_in::RebuildForRunInError;
 use run_in::RunInError;
@@ -48,6 +49,7 @@ use run_in::SwitchingCmdLogger;
 
 const DEFAULT_TEMPLATES_SOURCE: &str = env!("DOCK_DEFAULT_TEMPLATES_SOURCE");
 
+const CACHE_TAG_FLAG: &str = "cache-tag";
 const TAGGED_IMG_FLAG: &str = "tagged-image";
 const COMMAND_ARGS_FLAG: &str = "docker-args";
 const ENV_FLAG: &str = "env";
@@ -57,6 +59,9 @@ const SKIP_REBUILD_FLAG: &str = "skip-rebuild";
 const SOURCE_FLAG: &str = "source";
 const TEMPLATE_FLAG: &str = "template";
 
+const DEFAULT_CACHE_TAG: &str = "cached";
+
+#[allow(clippy::too_many_lines)]
 fn main() {
     let dock_file_name = "dock.yaml";
 
@@ -72,6 +77,14 @@ fn main() {
     );
     let init_about: &str =
         "Initialise the current directory with a Dock environment";
+    let cache_tag_long_help: &str = &format!(
+        "The tag to use for the image that will be replaced by the rebuild. \
+         If an image with the tagged name `{tagged_img_flag}` exists then its \
+         tag will be replaced by `{cache_tag_flag}` for the duration of the \
+         rebuild.",
+        tagged_img_flag = TAGGED_IMG_FLAG,
+        cache_tag_flag = CACHE_TAG_FLAG,
+    );
 
     let args =
         Command::new("dock")
@@ -83,6 +96,11 @@ fn main() {
                     .trailing_var_arg(true)
                     .about(rebuild_about)
                     .args(&[
+                        Arg::new(CACHE_TAG_FLAG)
+                            .long(CACHE_TAG_FLAG)
+                            .default_value(DEFAULT_CACHE_TAG)
+                            .help("The tag for the cache image")
+                            .long_help(cache_tag_long_help),
                         Arg::new(TAGGED_IMG_FLAG)
                             .required(true)
                             .help("The tagged name for the new image")
@@ -98,6 +116,11 @@ fn main() {
                     .trailing_var_arg(true)
                     .about(run_about)
                     .args(&[
+                        Arg::new(CACHE_TAG_FLAG)
+                            .long(CACHE_TAG_FLAG)
+                            .default_value(DEFAULT_CACHE_TAG)
+                            .help("The tag for the cache image")
+                            .long_help(cache_tag_long_help),
                         Arg::new(DEBUG_FLAG)
                             .short('D')
                             .long(DEBUG_FLAG)
@@ -120,6 +143,7 @@ fn main() {
                 Command::new("shell")
                     .about(shell_about)
                     .args(&[
+                        // TODO Add support for `cache-tag` flag.
                         Arg::new(DEBUG_FLAG)
                             .short('D')
                             .long(DEBUG_FLAG)
@@ -163,9 +187,12 @@ fn handle_arg_matches(args: &ArgMatches, dock_file_name: &str) {
                     Some(vs) => vs.collect(),
                     None => vec![],
                 };
-            let target_img = sub_args.value_of(TAGGED_IMG_FLAG).unwrap();
 
-            let exit_code = rebuild(target_img, &docker_args);
+            let exit_code = rebuild(
+                sub_args.value_of(TAGGED_IMG_FLAG).unwrap(),
+                sub_args.value_of(CACHE_TAG_FLAG).unwrap(),
+                &docker_args,
+            );
             process::exit(exit_code);
         },
         Some(("run-in", sub_args)) => {
@@ -196,13 +223,34 @@ fn handle_arg_matches(args: &ArgMatches, dock_file_name: &str) {
     }
 }
 
-fn rebuild(target_img: &str, docker_args: &[&str]) -> i32 {
+fn rebuild(target_img: &str, cache_tag: &str, docker_args: &[&str]) -> i32 {
     if let Some(i) = index_of_first_unsupported_flag(docker_args) {
         eprintln!("unsupported argument: `{}`", docker_args[i]);
         return 1;
     }
 
-    match rebuild::rebuild_with_streaming_output(target_img, docker_args) {
+    let target_img_parts =
+        target_img.split(':').collect::<Vec<&str>>();
+
+    let img_name =
+        if let [name, _tag] = target_img_parts.as_slice() {
+            name
+        } else {
+            eprintln!(
+                "`{}` must contain exactly one `:`",
+                TAGGED_IMG_FLAG,
+            );
+            return 1;
+        };
+
+    let cache_img = new_tagged_img_name(img_name, cache_tag);
+
+    let rebuild_result = rebuild::rebuild_with_streaming_output(
+        target_img,
+        &cache_img,
+        docker_args,
+    );
+    match rebuild_result {
         Ok(exit_status) => {
             exit_code_from_exit_status(exit_status)
         },
@@ -212,6 +260,10 @@ fn rebuild(target_img: &str, docker_args: &[&str]) -> i32 {
             1
         },
     }
+}
+
+fn new_tagged_img_name(img_name: &str, tag: &str) -> String {
+        format!("{}:{}", img_name, tag)
 }
 
 fn exit_code_from_exit_status(status: ExitStatus) -> i32 {
@@ -258,9 +310,11 @@ fn run_in(dock_file_name: &str, arg_matches: &ArgMatches) -> i32 {
         docker_args.push("--tty");
     }
 
+    let cache_tag = arg_matches.value_of(CACHE_TAG_FLAG).unwrap();
+
     let args = &Args{docker: &docker_args, command: &cmd_args};
 
-    handle_run_in(dock_file_name, Some(arg_matches), args, None)
+    handle_run_in(dock_file_name, Some(arg_matches), args, None, cache_tag)
 }
 
 fn handle_run_in(
@@ -268,6 +322,7 @@ fn handle_run_in(
     arg_matches: Option<&ArgMatches>,
     args: &Args,
     shell: Option<PathBuf>,
+    cache_tag: &str,
 ) -> i32 {
     let mut debug = false;
     let mut env_name = None;
@@ -315,6 +370,7 @@ fn handle_run_in(
         };
 
     let mut logger = SwitchingCmdLogger::new(loggers);
+
     let result = run_in::run_in(
         &mut logger,
         // TODO We would ideally lock and pass the `stdio` for the current
@@ -323,7 +379,7 @@ fn handle_run_in(
         Stdio::inherit(),
         dock_file_name,
         env_name,
-        &rebuild_action,
+        &Rebuild{action: rebuild_action, cache_tag: cache_tag.to_string()},
         args,
         shell,
     );
@@ -393,6 +449,7 @@ fn shell(dock_file_name: &str, args: Option<&ArgMatches>) -> i32 {
             command: &[],
         },
         Some(Path::new("/bin/sh").to_path_buf()),
+        DEFAULT_CACHE_TAG,
     )
 }
 

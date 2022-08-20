@@ -132,7 +132,7 @@ pub fn run_in(
     stdin: Stdio,
     dock_file_name: &str,
     maybe_env_name: Option<&str>,
-    rebuild_action: &RebuildAction,
+    rebuild: &Rebuild,
     args: &Args,
     // TODO Remove the `shell` parameter to decouple this function from the
     // `shell` subcommand.
@@ -146,10 +146,11 @@ pub fn run_in(
     let env = conf.environments.get(env_name)
         .context(EnvironmentNotFound{name: env_name})?;
 
-    let target_img =
-        tagged_image_name(&conf.organisation, &conf.project, env_name);
+    let img_name = image_name(&conf.organisation, &conf.project, env_name);
+    let target_img = img_name.clone() + ":latest";
+    let cache_img = img_name + ":" + &rebuild.cache_tag;
 
-    if let RebuildAction::Run = rebuild_action {
+    if let RebuildAction::Run = rebuild.action {
         let env_context =
             env.context
                 .as_ref()
@@ -170,6 +171,7 @@ pub fn run_in(
             env_name,
             &env_context,
             &target_img,
+            &cache_img,
             &build_args,
         )
             .context(RebuildForRunInFailed)?;
@@ -230,6 +232,11 @@ pub struct Args<'a> {
     pub command: &'a [&'a str],
 }
 
+pub struct Rebuild {
+    pub action: RebuildAction,
+    pub cache_tag: String,
+}
+
 pub enum RebuildAction {
     Run,
     Skip,
@@ -267,10 +274,8 @@ pub enum RunInError {
     DockerRunFailed{source: LoggingProcessRunError},
 }
 
-fn tagged_image_name(org: &str, proj: &str, env_name: &str) -> String {
-    let img_name = format!("{}/{}.{}", org, proj, env_name);
-
-    format!("{}:latest", img_name)
+fn image_name(org: &str, proj: &str, env_name: &str) -> String {
+    format!("{}/{}.{}", org, proj, env_name)
 }
 
 fn find_and_parse_dock_config(dock_file_name: &str)
@@ -385,6 +390,7 @@ fn rebuild_for_run_in(
     env_name: &str,
     maybe_context_sub_path: &Option<RelPath>,
     img: &str,
+    cache_img: &str,
     args: &[&str],
 )
     -> Result<(), RebuildForRunInError>
@@ -403,7 +409,7 @@ fn rebuild_for_run_in(
     )
         .context(NewDockerRebuildInputFailed)?;
 
-    let status = rebuild::rebuild(logger, img, docker_context, args)
+    let status = rebuild::rebuild(logger, img, cache_img, docker_context, args)
         .context(RebuildFailed{img: img.to_string()})?;
 
     if !status.success() {

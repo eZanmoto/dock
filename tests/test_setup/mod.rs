@@ -119,14 +119,15 @@ pub fn assert_apply_with_dockerfile_name(
     let test_dir = assert_create_root_dir(test_name);
     assert_write_fs_state(&test_dir, &fs_state);
 
-    let image_tagged_name =
-        format!("{}.{}:latest", IMAGE_NAME_ROOT, test_name);
-
     References{
         dir: test_dir,
-        image_tagged_name,
+        image_tagged_name: test_image_tagged_name(test_name),
         cache_volume_prefix: cache_volume_prefix(test_name),
     }
+}
+
+pub fn test_image_tagged_name(test_name: &str) -> String {
+    format!("{}.{}:latest", IMAGE_NAME_ROOT, test_name)
 }
 
 pub fn cache_volume_prefix(test_name: &str) -> String {

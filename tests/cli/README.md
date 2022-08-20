@@ -53,3 +53,12 @@ implementation of the programs used, and generally depend on the image that the
 command is run in (because the image defines what implementation is installed).
 As such, if different (base) images are used in these tests, the expected
 messages may need to change.
+
+`defer!`
+--------
+
+We use `defer!` to run cleanup for tests. We would generally use higher-order
+functions to perform such cleanups in non-test code, but these are less
+applicable in the case of tests, where test failures are triggered using panics.
+As such, we opt to use `defer!` so that the cleanup code will run regardless of
+how the test exited.
