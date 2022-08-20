@@ -17,11 +17,6 @@ fn shell_uses_correct_image() {
     let args = &["shell", test_name];
     let (test, mut pty) = unsafe { set_up(test_name, args) };
 
-    // We use `defer!` to run cleanup for tests. We generally use higher-order
-    // functions to perform such cleanups, but these are less applicable in the
-    // case of tests, where test failures are triggered using panics. As such,
-    // we opt to use `defer!` so that the cleanup code will run regardless of
-    // how the test exited.
     defer!{
         // We kill the container that we expect `dock` to have started. TODO
         // Document why this is needed.

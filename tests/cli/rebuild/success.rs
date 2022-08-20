@@ -2,7 +2,7 @@
 // Use of this source code is governed by an MIT
 // licence that can be found in the LICENCE file.
 
-use std::path::Path;
+use std::path::PathBuf;
 use std::str;
 
 use crate::assert_run;
@@ -38,7 +38,7 @@ fn rebuild_creates_image_if_none() {
     });
     // (2)
     docker::assert_remove_image(&test.image_tagged_name);
-    let mut cmd = new_test_cmd(test.dir, &test.image_tagged_name);
+    let mut cmd = new_test_cmd(&test.dir, &test.image_tagged_name);
 
     let cmd_result = cmd.assert();
 
@@ -55,7 +55,7 @@ fn rebuild_creates_image_if_none() {
 }
 
 fn new_test_cmd(
-    root_test_dir: String,
+    root_test_dir: &str,
     image_tagged_name: &str,
 ) -> AssertCommand {
     let mut cmd = AssertCommand::cargo_bin(env!("CARGO_PKG_NAME"))
@@ -159,7 +159,7 @@ fn rebuild_replaces_old_image() {
     // We rebuild the main test image, but we build it in the context of the
     // updated test directory. This allows us to validate the directory
     // contents for the purposes of debugging.
-    let mut cmd = new_test_cmd(updated_test.dir, &test.image_tagged_name);
+    let mut cmd = new_test_cmd(&updated_test.dir, &test.image_tagged_name);
 
     let cmd_result = cmd.assert();
 
@@ -179,7 +179,7 @@ fn rebuild_replaces_old_image() {
 
 pub fn rebuild_img(test_defn: &Definition) -> (References, String) {
     let test = test_setup::assert_apply(test_defn);
-    let mut cmd = new_test_cmd(test.dir.clone(), &test.image_tagged_name);
+    let mut cmd = new_test_cmd(&test.dir, &test.image_tagged_name);
     let build = assert_build_result(cmd.assert(), &test.image_tagged_name);
 
     (test, build.img_id().to_string())
@@ -212,7 +212,7 @@ fn rebuild_unchanged_context_doesnt_replace_image() {
         "},
         fs: &hashmap!{},
     });
-    let mut cmd = new_test_cmd(test.dir, &test.image_tagged_name);
+    let mut cmd = new_test_cmd(&test.dir, &test.image_tagged_name);
 
     cmd.assert();
 
@@ -241,7 +241,7 @@ fn file_argument() {
     );
     // (2)
     docker::assert_remove_image(&test.image_tagged_name);
-    let mut cmd = new_test_cmd(test.dir, &test.image_tagged_name);
+    let mut cmd = new_test_cmd(&test.dir, &test.image_tagged_name);
     cmd.arg("--file=test.Dockerfile");
 
     cmd.assert();
@@ -275,10 +275,12 @@ fn pass_dockerfile_through_stdin() {
     });
     // (2)
     docker::assert_remove_image(&test.image_tagged_name);
-    let dockerfile_str = &format!("{}/Dockerfile", test.dir);
-    let dockerfile = Path::new(dockerfile_str);
+    let dockerfile = PathBuf::from(format!("{}/Dockerfile", test.dir));
     // (3)
-    let mut cmd = new_test_cmd_with_stdin(dockerfile, &test.image_tagged_name);
+    let mut cmd = new_test_cmd_with_stdin(
+        Stdin::File(dockerfile),
+        &test.image_tagged_name,
+    );
 
     let cmd_result = cmd.assert();
 
@@ -294,15 +296,81 @@ fn pass_dockerfile_through_stdin() {
     );
 }
 
-fn new_test_cmd_with_stdin(stdin: &Path, image_tagged_name: &str)
+enum Stdin{
+    File(PathBuf),
+    Str(String),
+}
+
+fn new_test_cmd_with_stdin(stdin: Stdin, image_tagged_name: &str)
     -> AssertCommand
 {
     let mut cmd = AssertCommand::cargo_bin(env!("CARGO_PKG_NAME"))
         .expect("couldn't create command for package binary");
     cmd.args(vec!["rebuild", image_tagged_name, "-"]);
-    cmd.pipe_stdin(stdin)
-        .expect("couldn't pipe STDIN");
     cmd.env_clear();
 
+    match stdin {
+        Stdin::File(path) => {
+            cmd.pipe_stdin(path)
+                .expect("couldn't pipe STDIN");
+        },
+        Stdin::Str(s) => {
+            cmd.write_stdin(s);
+        },
+    }
+
     cmd
+}
+
+#[test]
+// Given (1) an image `<base_img>`
+//     AND (2) a container using `<base_img>`
+//     AND (3) a Dockerfile that only contains a `FROM <base_img>` instruction
+//     AND (4) an image `<test_img>` created from the Dockerfile
+//     AND (5) the Dockerfile is updated with more instructions
+// When `rebuild <test_img>` is run with the updated Dockerfile
+// Then (A) the command is successful
+//     AND (B) the command STDERR is empty
+//     AND (C) the command STDOUT is formatted correctly
+//     AND (D) the target image exists
+//
+// This test checks an issue with the rebuild approach that removes the old
+// image by ID. If an image is created with a Dockerfile that only has a `FROM`
+// instruction, then the image created from this Dockerfile will have the same
+// ID as the image in the `FROM` instruction. If the Dockerfile is then
+// updated and rebuilt, then during cleanup, `rebuild` will try and remove the
+// original image. This is undesirable in itself, but if a container exists
+// that is based on the original image, then this will prevent the removal and
+// will cause `rebuild` to return an error.
+fn cleanup_succeeds_even_if_image_not_removed() {
+    let test_name = "cleanup_succeeds_even_if_image_not_removed";
+    // (1)
+    let base_img = &test_setup::TEST_BASE_IMG;
+    let args = &["container", "create", base_img];
+    // (2)
+    let container_id = assert_run::assert_run_stdout("docker", args);
+    defer!{
+        let rm_args = &["container", "rm", container_id.trim_end()];
+        assert_run::assert_run_stdout("docker", rm_args);
+    }
+    // (3)
+    let mut dockerfile = format!("FROM {}\n", base_img);
+    let stdin = Stdin::Str(dockerfile.clone());
+    let test_img = test_setup::test_image_tagged_name(test_name);
+    // (4)
+    assert_cmd_success(new_test_cmd_with_stdin(stdin, &test_img));
+    // (5)
+    dockerfile += "RUN true\n";
+    let mut cmd = new_test_cmd_with_stdin(Stdin::Str(dockerfile), &test_img);
+
+    let cmd_result = cmd.assert();
+
+    // (A) (B) (C)
+    assert_build_result(cmd_result, &test_img);
+    // (D)
+    docker::assert_image_exists(&test_img);
+}
+
+fn assert_cmd_success(mut cmd: AssertCommand) {
+    cmd.assert().success();
 }
