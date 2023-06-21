@@ -1,4 +1,4 @@
-// Copyright 2022 Sean Kelleher. All rights reserved.
+// Copyright 2022-2023 Sean Kelleher. All rights reserved.
 // Use of this source code is governed by an MIT
 // licence that can be found in the LICENCE file.
 
@@ -16,6 +16,7 @@ use std::str;
 
 use crate::nix::pty;
 use crate::nix::pty::OpenptyResult;
+use crate::nix::pty::Winsize;
 use crate::nix::sys::time::TimeVal;
 
 use crate::timeout::Error as TimeoutError;
@@ -28,8 +29,39 @@ pub struct Pty {
 
 impl Pty {
     pub unsafe fn new(prog: &OsStr, args: &[&str], current_dir: &str) -> Self {
+        Self::new_with_optional_winsize(prog, args, current_dir, None)
+    }
+
+    pub unsafe fn new_with_winsize(
+        prog: &OsStr,
+        args: &[&str],
+        current_dir: &str,
+        size: (u16, u16),
+    )
+        -> Self
+    {
+        let (rows, cols) = size;
+        let winsize = Winsize{
+            ws_row: rows,
+            ws_col: cols,
+            ws_xpixel: 0,
+            ws_ypixel: 0,
+        };
+        let ws = Some(&winsize);
+
+        Self::new_with_optional_winsize(prog, args, current_dir, ws)
+    }
+
+    unsafe fn new_with_optional_winsize(
+        prog: &OsStr,
+        args: &[&str],
+        current_dir: &str,
+        winsize: Option<&Winsize>,
+    )
+        -> Self
+    {
         let OpenptyResult{master: controller_fd, slave: follower_fd} =
-            pty::openpty(None, None)
+            pty::openpty(winsize, None)
                 .expect("couldn't open a new PTY");
 
         let new_follower_stdio = || Stdio::from_raw_fd(follower_fd);
