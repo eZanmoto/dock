@@ -19,6 +19,10 @@ clap = "=3.1.18"
 serde_yaml = "=0.8.1"
 snafu = "=0.6.9"
 
+[dependencies.nix]
+version = "=0.24.1"
+features = ["ioctl"]
+
 [dependencies.serde]
 version = "=1.0.133"
 features = ["derive"]
@@ -37,7 +41,6 @@ assert_cmd = "=1.0.1"
 assert_matches = "=1.5.0"
 indoc = "=1.0.2"
 maplit = "=1.0.2"
-nix = "=0.24.1"
 predicates = "=2.1.1"
 scopeguard = "=1.1.0"
 serial_test = "=2.0.0"

@@ -106,7 +106,34 @@ fn shell_in_pty_gets_initial_terminal_size() {
     pty.expect_eof();
 }
 
-// TODO Resize handling.
+#[test]
+#[serial]
+fn set_winsize_updates_pty_size() {
+    let timeout = TimeVal::seconds(3);
+    let sh = OsStr::new("/bin/sh");
+    let mut pty = unsafe { Expecter::new(sh, &[], timeout, "/") };
+
+    pty.expect("$ ");
+    pty.send("tput cols\n");
+    pty.expect("80\r");
+    pty.expect("$ ");
+    pty.send("tput lines\n");
+    pty.expect("24\r");
+    pty.expect("$ ");
+
+    pty.set_winsize(10, 20);
+
+    pty.expect("$ ");
+    pty.send("tput cols\n");
+    pty.expect("20\r");
+    pty.expect("$ ");
+    pty.send("tput lines\n");
+    pty.expect("10\r");
+
+    pty.expect("$ ");
+    pty.send("exit\n");
+    pty.expect_eof();
+}
 
 pub struct Expecter {
     pty: Pty,
@@ -148,6 +175,10 @@ impl Expecter {
             buf_used: 0,
             last_match: 0,
         }
+    }
+
+    pub fn set_winsize(&mut self, rows: u16, cols: u16) {
+        self.pty.set_winsize(rows, cols);
     }
 
     pub fn send(&mut self, substr: &str) {

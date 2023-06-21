@@ -1,4 +1,4 @@
-// Copyright 2021-2022 Sean Kelleher. All rights reserved.
+// Copyright 2021-2023 Sean Kelleher. All rights reserved.
 // Use of this source code is governed by an MIT
 // licence that can be found in the LICENCE file.
 
@@ -9,6 +9,7 @@ extern crate assert_matches;
 extern crate indoc;
 #[macro_use]
 extern crate maplit;
+#[macro_use]
 extern crate nix;
 extern crate predicates;
 #[macro_use]
