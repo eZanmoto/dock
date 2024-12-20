@@ -5,7 +5,7 @@
 schema_version: '0.1'
 organisation: ezanmoto
 project: dock
-default_shell_env: cross
+default_shell_env: build
 
 environments:
   cross:
@@ -22,5 +22,21 @@ environments:
     # have a username; see <https://github.com/rust-embedded/cross/pull/505> for
     # more details.
     mount_local:
-    - project_dir
     - docker
+    - project_dir
+
+  build:
+    shell: /bin/bash
+    workdir: /app
+
+    cache_volumes:
+      cargo: /cargo
+
+    env:
+      CARGO_HOME: /cargo
+
+    mount_local:
+    - docker
+    - group
+    - project_dir
+    - user
