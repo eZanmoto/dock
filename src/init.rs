@@ -296,14 +296,6 @@ pub enum InitError {
     ))]
     CloneSourceFailed{source: CloneToError, dest: PathBuf},
     #[snafu(display(
-        "Couldn't read template directory '{}': {}",
-        template_dir.display(),
-        source,
-    ))]
-    ReadTemplateDirFailed{source: IoError, template_dir: PathBuf},
-    #[snafu(display("Couldn't read template entry: {}", source))]
-    ReadTemplateEntryFailed{source: IoError},
-    #[snafu(display(
         "Couldn't copy template from '{}': {}",
         start_dir.display(),
         source,
