@@ -81,10 +81,10 @@ clean: clean_images clean_volumes
 
 # Remove all test images.
 clean_images:
-    bash scripts/clean_images.sh \
-        "$TEST_IMG_NAMESPACE"
+    bash scripts/clean_images.sh "$TEST_IMG_NAMESPACE"
+    # TODO Remove hard-coded namespace.
+    bash scripts/clean_images.sh "org/proj"
 
 # Remove all test volumes.
 clean_volumes:
-    bash scripts/clean_volumes.sh \
-        '{{test_vol_namespace}}'
+    bash scripts/clean_volumes.sh '{{test_vol_namespace}}'
