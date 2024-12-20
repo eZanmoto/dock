@@ -393,3 +393,6 @@ Release binaries are built using `build_release.sh` with a [`cross`
 target](https://github.com/rust-embedded/cross#supported-targets):
 
     bash scripts/build_release.sh x86_64-unknown-linux-musl
+
+Note that the generated file is currently owned by `root`, so permissions will
+need to be changed to make it accessible by other users.
