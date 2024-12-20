@@ -693,9 +693,9 @@ fn prepare_mount_local_run_args(
 
             let user_group =
                 format!("{}:{}", user_id.trim_end(), group_id.trim_end());
-            args.extend(to_strings(&["--user", &user_group]));
+            args.push(format!("--user={}", user_group));
         } else {
-            args.extend(to_strings(&["--user", user_id.trim_end()]));
+            args.push(format!("--user={}", user_id.trim_end()));
         }
     } else if mount_local.contains(&DockEnvironmentMountLocalConfig::Group) {
         return Err(PrepareRunInMountLocalArgsError::GroupMountedWithoutUser);
