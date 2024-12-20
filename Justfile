@@ -1,4 +1,4 @@
-# Copyright 2022 Sean Kelleher. All rights reserved.
+# Copyright 2022-2024 Sean Kelleher. All rights reserved.
 # Use of this source code is governed by an MIT
 # licence that can be found in the LICENCE file.
 
@@ -24,6 +24,9 @@ export TEST_BASE_IMG := test_base_img_name + ':' + test_base_img_tag
 # List available recipes.
 default:
     just --list
+
+build_release target='x86_64-unknown-linux-musl':
+    bash scripts/build_release.sh '{{target}}'
 
 # Run all checks.
 check *tests: && check_lint

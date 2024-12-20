@@ -1,4 +1,4 @@
-# Copyright 2021-2022 Sean Kelleher. All rights reserved.
+# Copyright 2021-2024 Sean Kelleher. All rights reserved.
 # Use of this source code is governed by an MIT
 # licence that can be found in the LICENCE file.
 
@@ -35,6 +35,27 @@ host_docker_group_id=$(
 )
 
 workdir_host_path="$(pwd)"
+if [ ! -z "$DOCK_HOSTPATHS" ] ; then
+    # NOTE We only implement a subset of the full `DOCK_HOSTPATHS` functionality
+    # in this script for simplicity, by assuming that `DOCK_HOSTPATHS` contains
+    # one mapping, and it maps to the current working directory.
+
+    host_path_tgt=$(
+        echo "$DOCK_HOSTPATHS" \
+            | sed 's/.*://'
+    )
+    if [ "$host_path_tgt" != "$workdir_host_path" ] ; then
+            echo "mounted directory doesn't map to working directory" \
+                >&2
+            exit 2
+    fi
+
+    workdir_host_path=$(
+        echo "$DOCK_HOSTPATHS" \
+            | sed 's/:.*//'
+    )
+fi
+
 workdir_mount_path="/app"
 
 # `DOCK_HOSTPATHS` is defined to be in the format that `dock` expects in order
