@@ -1,4 +1,4 @@
-// Copyright 2022 Sean Kelleher. All rights reserved.
+// Copyright 2022-2024 Sean Kelleher. All rights reserved.
 // Use of this source code is governed by an MIT
 // licence that can be found in the LICENCE file.
 
@@ -910,7 +910,7 @@ fn debug_flag() {
         .stdout(predicate_match(r"\[>\] Step 1/2 : FROM .*"))
         .stdout(predicate_match(r"\[>\] Successfully built .*"))
         .stdout(predicate_match(r"\[\$\] docker run .*"))
-        .stdout(predicate_match(r"\[>\] hello"));
+        .stdout(predicate_match(r"hello"));
     docker::assert_image_exists(&test.image_tagged_name);
 }
 

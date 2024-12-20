@@ -1,4 +1,4 @@
-// Copyright 2021-2022 Sean Kelleher. All rights reserved.
+// Copyright 2021-2024 Sean Kelleher. All rights reserved.
 // Use of this source code is governed by an MIT
 // licence that can be found in the LICENCE file.
 
@@ -12,7 +12,6 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::process;
 use std::process::ExitStatus;
-use std::process::Stdio;
 use std::str;
 
 use clap::Arg;
@@ -33,7 +32,6 @@ mod trie;
 use cmd_loggers::CapturingCmdLogger;
 use cmd_loggers::Prefixer;
 use cmd_loggers::PrefixingCmdLogger;
-use cmd_loggers::StdCmdLogger;
 use cmd_loggers::Stream;
 use cmd_loggers::TimingPrefixingCmdLogger;
 use init::FileAction;
@@ -45,7 +43,6 @@ use run_in::Rebuild;
 use run_in::RebuildAction;
 use run_in::RebuildForRunInError;
 use run_in::RunInError;
-use run_in::SwitchingCmdLogger;
 
 const DEFAULT_TEMPLATES_SOURCE: &str = env!("DOCK_DEFAULT_TEMPLATES_SOURCE");
 
@@ -351,7 +348,7 @@ fn handle_run_in(
     let stderr = io::stderr();
     let mut stderr = stderr.lock();
 
-    let loggers =
+    let mut logger =
         if debug {
             let logger = PrefixingCmdLogger::new(
                 &mut stdout,
@@ -363,20 +360,11 @@ fn handle_run_in(
 
             CmdLoggers::Debugging(timing_logger)
         } else {
-            CmdLoggers::Streaming{
-                capturing: CapturingCmdLogger::new(),
-                streaming: StdCmdLogger::new(&mut stdout, &mut stderr),
-            }
+            CmdLoggers::Capturing(CapturingCmdLogger::new())
         };
-
-    let mut logger = SwitchingCmdLogger::new(loggers);
 
     let result = run_in::run_in(
         &mut logger,
-        // TODO We would ideally lock and pass the `stdio` for the current
-        // process but this requires unsafe file descriptor use and makes this
-        // program more Unix-dependent.
-        Stdio::inherit(),
         dock_file_name,
         env_name,
         &Rebuild{action: rebuild_action, cache_tag: cache_tag.to_string()},
@@ -391,14 +379,14 @@ fn handle_run_in(
             exit_code_from_exit_status(exit_status)
         },
         Err(err) => {
-            match (err, logger.loggers) {
+            match (err, logger) {
                 (
                     RunInError::RebuildForRunInFailed{
                         source: RebuildForRunInError::RebuildUnsuccessful{..},
                     },
-                    CmdLoggers::Streaming{capturing, ..},
+                    CmdLoggers::Capturing(logger),
                 ) => {
-                    let chunks = &capturing.chunks;
+                    let chunks = &logger.chunks;
 
                     write_streams(&mut stdout, &mut stderr, chunks);
                 },

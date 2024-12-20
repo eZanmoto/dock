@@ -1,4 +1,4 @@
-// Copyright 2022 Sean Kelleher. All rights reserved.
+// Copyright 2022-2024 Sean Kelleher. All rights reserved.
 // Use of this source code is governed by an MIT
 // licence that can be found in the LICENCE file.
 
@@ -127,13 +127,13 @@ fn shell_debug_flag() {
     pty.expect(r"[>] Successfully built ");
     pty.expect(r"[$] docker run ");
 
-    pty.expect("[>] / # ");
+    pty.expect("/ # ");
 
     pty.send("cat 'test.txt'\n");
 
     pty.expect(test_name);
 
-    pty.expect("[>] / # ");
+    pty.expect("/ # ");
 
     pty.send("exit\n");
 

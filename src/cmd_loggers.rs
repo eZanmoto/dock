@@ -1,4 +1,4 @@
-// Copyright 2022 Sean Kelleher. All rights reserved.
+// Copyright 2022-2024 Sean Kelleher. All rights reserved.
 // Use of this source code is governed by an MIT
 // licence that can be found in the LICENCE file.
 
@@ -203,47 +203,3 @@ fn is_newline(b: u8) -> bool {
 
 const SPACE: u8 = 0x20;
 const NEWLINE: u8 = 0x0a;
-
-pub struct StdCmdLogger<'a> {
-    stdout: &'a mut dyn Write,
-    stderr: &'a mut dyn Write,
-    pub err: Option<IoError>,
-}
-
-impl<'a> StdCmdLogger<'a> {
-    pub fn new(
-        stdout: &'a mut dyn Write,
-        stderr: &'a mut dyn Write,
-    ) -> Self {
-        StdCmdLogger{stdout, stderr, err: None}
-    }
-
-    fn try_log(&mut self, msg: &CmdLoggerMsg) -> Result<(), IoError> {
-        match msg {
-            CmdLoggerMsg::StdoutWrite(bs) => {
-                self.stdout.write_all(bs)?;
-                self.stdout.flush()?;
-            },
-            CmdLoggerMsg::StderrWrite(bs) => {
-                self.stderr.write_all(bs)?;
-                self.stderr.flush()?;
-            },
-            _ => {
-            },
-        }
-
-        Ok(())
-    }
-}
-
-impl<'a> CommandLogger for StdCmdLogger<'a> {
-    fn log(&mut self, msg: CmdLoggerMsg) {
-        if self.err.is_some() {
-            return;
-        }
-
-        if let Err(err) = self.try_log(&msg) {
-            self.err = Some(err);
-        }
-    }
-}
