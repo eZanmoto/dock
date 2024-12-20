@@ -1,4 +1,4 @@
-// Copyright 2022 Sean Kelleher. All rights reserved.
+// Copyright 2022-2024 Sean Kelleher. All rights reserved.
 // Use of this source code is governed by an MIT
 // licence that can be found in the LICENCE file.
 
@@ -13,8 +13,10 @@ use std::fs as std_fs;
 use std::fs::File;
 use std::io::Error as IoError;
 use std::os::unix::fs::MetadataExt;
+use std::os::unix::process::CommandExt;
 use std::path::PathBuf;
 use std::process::Command;
+
 use std::process::ExitStatus;
 use std::process::Output;
 use std::process::Stdio;
@@ -33,7 +35,6 @@ use crate::canon_path::NewAbsPathError;
 use crate::canon_path::NewRelPathError;
 use crate::canon_path::RelPath;
 use crate::cmd_loggers::CapturingCmdLogger;
-use crate::cmd_loggers::StdCmdLogger;
 use crate::cmd_loggers::TimingPrefixingCmdLogger;
 use crate::fs;
 use crate::fs::FindAndOpenFileError;
@@ -81,55 +82,26 @@ enum DockEnvironmentMountLocalConfig {
     Docker,
 }
 
-pub struct SwitchingCmdLogger<'a> {
-    use_first: bool,
-    pub loggers: CmdLoggers<'a>,
-}
-
-impl<'a> SwitchingCmdLogger<'a> {
-    pub fn new(loggers: CmdLoggers<'a>) -> Self {
-        SwitchingCmdLogger{use_first: true, loggers}
-    }
-
-    fn switch(&mut self) {
-        self.use_first = false;
-    }
-}
-
-impl<'a> CommandLogger for SwitchingCmdLogger<'a> {
-    fn log(&mut self, msg: CmdLoggerMsg) {
-        self.loggers.log(self.use_first, msg);
-    }
-}
-
 pub enum CmdLoggers<'a> {
     Debugging(TimingPrefixingCmdLogger<'a>),
-    Streaming{
-        capturing: CapturingCmdLogger,
-        streaming: StdCmdLogger<'a>,
-    },
+    Capturing(CapturingCmdLogger),
 }
 
-impl<'a> CmdLoggers<'a> {
-    fn log(&mut self, use_first: bool, msg: CmdLoggerMsg) {
+impl<'a> CommandLogger for CmdLoggers<'a> {
+    fn log(&mut self, msg: CmdLoggerMsg) {
         match self {
             Self::Debugging(logger) => {
                 logger.log(msg);
             },
-            Self::Streaming{capturing, streaming} => {
-                if use_first {
-                    capturing.log(msg);
-                } else {
-                    streaming.log(msg);
-                }
+            Self::Capturing(logger) => {
+                logger.log(msg);
             },
         }
     }
 }
 
 pub fn run_in(
-    logger: &mut SwitchingCmdLogger,
-    stdin: Stdio,
+    logger: &mut dyn CommandLogger,
     dock_file_name: &str,
     maybe_env_name: Option<&str>,
     rebuild: &Rebuild,
@@ -210,8 +182,6 @@ pub fn run_in(
 
     // TODO Perform the side effects of `prepare_run_cache_volumes_args` here.
 
-    logger.switch();
-
     let prog = OsStr::new("docker");
     let args: Vec<&OsStr> =
         run_args
@@ -219,12 +189,14 @@ pub fn run_in(
             .map(OsStr::new)
             .collect();
 
-    // TODO Consider always using `exec`, or using `exec` if "debug" mode isn't
-    // being used.
-    let exit_status = logging_process::run(logger, prog, &args, stdin)
-        .context(DockerRunFailed)?;
+    let mut cmd_line = vec![prog];
+    cmd_line.extend(&args);
+    logger.log(CmdLoggerMsg::Cmd(&cmd_line));
 
-    Ok(exit_status)
+    let mut cmd = Command::new(prog);
+    let err = cmd.args(&args).exec();
+
+    Err(RunInError::ExecFailed{source: err})
 }
 
 pub struct Args<'a> {
@@ -272,6 +244,8 @@ pub enum RunInError {
     PrepareRunInArgsFailed{source: PrepareRunInArgsError},
     #[snafu(display("`docker run` failed: {}", source))]
     DockerRunFailed{source: LoggingProcessRunError},
+    #[snafu(display("`exec` failed: {}", source))]
+    ExecFailed{source: IoError},
 }
 
 fn image_name(org: &str, proj: &str, env_name: &str) -> String {

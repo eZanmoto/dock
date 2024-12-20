@@ -1,4 +1,4 @@
-// Copyright 2022 Sean Kelleher. All rights reserved.
+// Copyright 2022-2023 Sean Kelleher. All rights reserved.
 // Use of this source code is governed by an MIT
 // licence that can be found in the LICENCE file.
 
@@ -8,13 +8,22 @@ use std::string::ToString;
 
 use crate::nix::sys::time::TimeVal;
 use crate::nix::sys::time::TimeValLike;
+use serial_test::serial;
 
 use crate::timeout::Error as TimeoutError;
 use super::Pty;
 
+// TODO Refactor tests in this file into BDD-comment tests.
+
+// TODO Tests that create shells in this module are marked as `serial`. This is
+// because when they run in parallel, it often happens that the `cargo test`
+// job is stopped in the shell that it's run under, and `fg` must be used to
+// bring it to the foreground to allow it to complete. This behaviour should be
+// investigated and ideally rectified when time allows.
+
 #[test]
-// TODO Refactor this test into BDD-comment tests.
-fn sequence() {
+#[serial]
+fn shell_session_is_interactive() {
     let timeout = TimeVal::seconds(3);
     let sh = OsStr::new("/bin/sh");
     let mut pty = unsafe { Expecter::new(sh, &[], timeout, "/") };
@@ -32,6 +41,97 @@ fn sequence() {
 
     pty.send("exit\n");
 
+    pty.expect_eof();
+}
+
+#[test]
+#[serial]
+fn pty_without_initial_size_gets_expected_defaults() {
+    let timeout = TimeVal::seconds(3);
+    let sh = OsStr::new("/bin/sh");
+    let mut pty = unsafe { Expecter::new(sh, &[], timeout, "/") };
+
+    pty.expect("$ ");
+    pty.send("tput cols\n");
+    pty.expect("80\r");
+    pty.expect("$ ");
+    pty.send("tput lines\n");
+    pty.expect("24\r");
+    pty.expect("$ ");
+    pty.send("exit\n");
+    pty.expect_eof();
+}
+
+#[test]
+fn pty_is_created_with_correct_width() {
+    let timeout = TimeVal::seconds(3);
+    let sh = OsStr::new("tput");
+    let mut pty = unsafe {
+        Expecter::new_with_winsize(sh, &["cols"], timeout, "/", (50, 10))
+    };
+
+    pty.expect("10");
+    pty.expect_eof();
+}
+
+#[test]
+fn pty_is_created_with_correct_height() {
+    let timeout = TimeVal::seconds(3);
+    let sh = OsStr::new("tput");
+    let mut pty = unsafe {
+        Expecter::new_with_winsize(sh, &["lines"], timeout, "/", (10, 50))
+    };
+
+    pty.expect("10");
+    pty.expect_eof();
+}
+
+#[test]
+#[serial]
+fn shell_in_pty_gets_initial_terminal_size() {
+    let timeout = TimeVal::seconds(3);
+    let sh = OsStr::new("/bin/sh");
+    let mut pty = unsafe {
+        Expecter::new_with_winsize(sh, &[], timeout, "/", (10, 20))
+    };
+
+    pty.expect("$ ");
+    pty.send("tput cols\n");
+    pty.expect("20\r");
+    pty.expect("$ ");
+    pty.send("tput lines\n");
+    pty.expect("10\r");
+    pty.expect("$ ");
+    pty.send("exit\n");
+    pty.expect_eof();
+}
+
+#[test]
+#[serial]
+fn set_winsize_updates_pty_size() {
+    let timeout = TimeVal::seconds(3);
+    let sh = OsStr::new("/bin/sh");
+    let mut pty = unsafe { Expecter::new(sh, &[], timeout, "/") };
+
+    pty.expect("$ ");
+    pty.send("tput cols\n");
+    pty.expect("80\r");
+    pty.expect("$ ");
+    pty.send("tput lines\n");
+    pty.expect("24\r");
+    pty.expect("$ ");
+
+    pty.set_winsize(10, 20);
+
+    pty.expect("$ ");
+    pty.send("tput cols\n");
+    pty.expect("20\r");
+    pty.expect("$ ");
+    pty.send("tput lines\n");
+    pty.expect("10\r");
+
+    pty.expect("$ ");
+    pty.send("exit\n");
     pty.expect_eof();
 }
 
@@ -58,6 +158,27 @@ impl Expecter {
             buf_used: 0,
             last_match: 0,
         }
+    }
+
+    pub unsafe fn new_with_winsize(
+        prog: &OsStr,
+        args: &[&str],
+        timeout: TimeVal,
+        current_dir: &str,
+        size: (u16, u16),
+    ) -> Self {
+        Self{
+            pty: Pty::new_with_winsize(prog, args, current_dir, size),
+            timeout,
+            // TODO Consider taking the capacity as a parameter instead.
+            buf: Vec::with_capacity(BUF_MIN_SPACE),
+            buf_used: 0,
+            last_match: 0,
+        }
+    }
+
+    pub fn set_winsize(&mut self, rows: u16, cols: u16) {
+        self.pty.set_winsize(rows, cols);
     }
 
     pub fn send(&mut self, substr: &str) {
