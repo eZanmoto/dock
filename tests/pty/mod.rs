@@ -1,4 +1,4 @@
-// Copyright 2022-2023 Sean Kelleher. All rights reserved.
+// Copyright 2022-2024 Sean Kelleher. All rights reserved.
 // Use of this source code is governed by an MIT
 // licence that can be found in the LICENCE file.
 
@@ -20,6 +20,7 @@ use crate::nix::pty;
 use crate::nix::pty::OpenptyResult;
 use crate::nix::pty::Winsize;
 use crate::nix::sys::time::TimeVal;
+use crate::nix::unistd;
 
 use crate::timeout::Error as TimeoutError;
 use crate::timeout::FdReadWriter;
@@ -69,7 +70,12 @@ impl Pty {
             pty::openpty(winsize, None)
                 .expect("couldn't open a new PTY");
 
-        let new_follower_stdio = || Stdio::from_raw_fd(follower_fd);
+        let new_follower_stdio = || {
+            let fd = unistd::dup(follower_fd)
+                .expect("couldn't duplicate follower FD");
+
+            Stdio::from_raw_fd(fd)
+        };
 
         let child =
             Command::new(prog)
@@ -80,6 +86,13 @@ impl Pty {
                 .current_dir(current_dir)
                 .spawn()
                 .expect("couldn't spawn the new PTY process");
+
+        // We close `follower_fd` because otherwise this would remain as a
+        // lingering open FD after the others are closed when the new process
+        // terminates, and so would prevent EOF from being passed to
+        // `controller_fd`.
+        unistd::close(follower_fd)
+            .expect("couldn't close follower FD");
 
         // NOTE Care should be taken here because we end up with two references
         // to `controller_fd`, which circumvents a basic premise of the borrow
