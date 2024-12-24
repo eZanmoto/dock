@@ -15,6 +15,7 @@ use std::process::Stdio;
 use std::ptr;
 use std::str;
 
+use crate::nix::errno::Errno;
 use crate::nix::libc::TIOCSWINSZ;
 use crate::nix::pty;
 use crate::nix::pty::OpenptyResult;
@@ -109,7 +110,7 @@ impl Pty {
     {
         let result = self.stream.read(buf, timeout);
 
-        // If we encounter an error code 5, which corresponds to "Input/output
+        // If we encounter an `Errno::EIO`, which corresponds to "Input/output
         // error" in Rust, we regard that as an EOF signal and convert it to
         // match the Rust convention for `read`. This information is supported
         // by a number of non-authoritative sources, but a good summary is
@@ -122,7 +123,7 @@ impl Pty {
         //
         // It is presumed that `EIO` corresponds to "Input/output error".
         if let Err(TimeoutError::OperationFailed{ref source}) = result {
-            if source.raw_os_error() == Some(5) {
+            if let Errno::EIO = source {
                 return Ok(Some(0));
             }
         }
