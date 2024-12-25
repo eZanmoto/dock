@@ -59,9 +59,7 @@ fn run_in_with_build_failure() {
 pub fn predicate_match(s: &str) -> RegexPredicate {
     predicate_str::is_match(s)
         .unwrap_or_else(|e| panic!(
-            "couldn't generate a pattern match for '{}': {}",
-            s,
-            e,
+            "couldn't generate a pattern match for '{s}': {e}",
         ))
 }
 

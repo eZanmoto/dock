@@ -108,7 +108,7 @@ impl Pty {
     pub fn read(&mut self, buf: &mut [u8], timeout: Option<TimeVal>)
         -> Result<Option<usize>, TimeoutError>
     {
-        let result = self.stream.read(buf, timeout);
+        let r = self.stream.read(buf, timeout);
 
         // If we encounter an `Errno::EIO`, which corresponds to "Input/output
         // error" in Rust, we regard that as an EOF signal and convert it to
@@ -122,13 +122,11 @@ impl Pty {
         // > `EAGAIN` before the slave has been first opened.
         //
         // It is presumed that `EIO` corresponds to "Input/output error".
-        if let Err(TimeoutError::OperationFailed{ref source}) = result {
-            if let Errno::EIO = source {
+        if let Err(TimeoutError::OperationFailed{source: Errno::EIO}) = r {
                 return Ok(Some(0));
-            }
         }
 
-        result
+        r
     }
 
     pub fn write(&mut self, buf: &[u8], timeout: Option<TimeVal>)

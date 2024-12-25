@@ -87,7 +87,7 @@ pub enum CmdLoggers<'a> {
     Capturing(CapturingCmdLogger),
 }
 
-impl<'a> CommandLogger for CmdLoggers<'a> {
+impl CommandLogger for CmdLoggers<'_> {
     fn log(&mut self, msg: CmdLoggerMsg) {
         match self {
             Self::Debugging(logger) => {
@@ -141,7 +141,7 @@ pub fn run_in(
             logger,
             &dock_dir,
             env_name,
-            &env_context,
+            env_context.as_ref(),
             &target_img,
             &cache_img,
             &build_args,
@@ -156,7 +156,7 @@ pub fn run_in(
 
     if let Some(mut shell) = shell {
         if let Some(s) = &env.shell {
-            shell = s.clone();
+            shell.clone_from(s);
         }
 
         run_args.push(format!("--entrypoint={}", shell.display()));
@@ -360,7 +360,7 @@ fn rebuild_for_run_in(
     logger: &mut dyn CommandLogger,
     dock_dir: &AbsPath,
     env_name: &str,
-    maybe_context_sub_path: &Option<RelPath>,
+    maybe_context_sub_path: Option<&RelPath>,
     img: &str,
     cache_img: &str,
     args: &[&str],
@@ -417,7 +417,7 @@ fn rel_path_from_component(c: OsString) -> RelPath {
 fn new_docker_context(
     dock_dir: &AbsPath,
     dockerfile_path: AbsPath,
-    maybe_context_sub_path: &Option<RelPath>,
+    maybe_context_sub_path: Option<&RelPath>,
 )
     -> Result<DockerContext, NewDockerContextError>
 {
@@ -484,7 +484,7 @@ fn prepare_run_in_args(
     // TODO Add tests for nested mounting.
     let mut parsed_mounts = vec![];
     if let Some(mounts) = &env.mounts {
-        for (rel_outer_path, inner_path) in mounts.iter() {
+        for (rel_outer_path, inner_path) in mounts {
             let rel_outer_path =
                 RelPath::try_from(rel_outer_path.clone())
                     .context(ParseConfigOuterPathFailed{
@@ -518,9 +518,12 @@ fn prepare_run_in_args(
         let cur_hostpaths = hostpaths()
             .context(GetHostpathsFailed)?;
 
-        let args =
-            prepare_run_mount_args(dock_dir, &parsed_mounts, &cur_hostpaths)
-                .context(PrepareRunInMountArgsFailed)?;
+        let args = prepare_run_mount_args(
+            dock_dir,
+            &parsed_mounts,
+            cur_hostpaths.as_ref(),
+        )
+            .context(PrepareRunInMountArgsFailed)?;
 
         run_args.extend(args);
     }
@@ -581,7 +584,7 @@ fn prepare_run_cache_volumes_args(
 {
     let mut args = vec![];
 
-    for (name, path) in cache_volumes.iter() {
+    for (name, path) in cache_volumes {
         let path_abs_path = AbsPath::try_from(path.clone())
             .context(CacheVolDirAsAbsPathFailed)?;
 
@@ -785,7 +788,7 @@ pub enum AssertRunError {
 fn prepare_run_mount_args(
     dock_dir: &AbsPath,
     mounts: &[(RelPath, PathBuf)],
-    cur_hostpaths: &Option<Hostpaths>,
+    cur_hostpaths: Option<&Hostpaths>,
 )
     -> Result<Vec<String>, PrepareRunInMountArgsError>
 {
@@ -1079,7 +1082,7 @@ fn pairs<'a, T: Debug + ?Sized>(xs: &[&'a T]) -> Option<Vec<(&'a T, &'a T)>> {
     Some(pairs)
 }
 
-fn apply_hostpath(maybe_hostpaths: &Option<Hostpaths>, path: &AbsPath)
+fn apply_hostpath(maybe_hostpaths: Option<&Hostpaths>, path: &AbsPath)
     -> Option<AbsPath>
 {
     if let Some(hps) = maybe_hostpaths {

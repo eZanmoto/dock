@@ -190,18 +190,15 @@ impl Expecter {
 
             let n = self.pty.write(subseq, Some(self.timeout))
                 .unwrap_or_else(|_| self.fail(&format!(
-                    "couldn't write to PTY; sending '{}'",
-                    substr,
+                    "couldn't write to PTY; sending '{substr}'",
                 )))
                 .unwrap_or_else(|| self.fail(&format!(
-                    "write timed out; sending '{}'",
-                    substr,
+                    "write timed out; sending '{substr}'",
                 )));
 
             if n == 0 {
                 self.fail(&format!(
-                    "PTY didn't accept bytes; sending '{}'",
-                    substr,
+                    "PTY didn't accept bytes; sending '{substr}'",
                 ));
             }
 
@@ -225,12 +222,10 @@ impl Expecter {
 
             let n = self.read_to_buf_from(self.buf_used)
                 .unwrap_or_else(|_| self.fail(&format!(
-                    "couldn't read from PTY; expecting '{}'",
-                    substr,
+                    "couldn't read from PTY; expecting '{substr}'",
                 )))
                 .unwrap_or_else(|| self.fail(&format!(
-                    "read timed out; expecting '{}'",
-                    substr,
+                    "read timed out; expecting '{substr}'",
                 )));
 
             if n == 0 {

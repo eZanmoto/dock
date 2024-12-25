@@ -109,8 +109,7 @@ pub fn assert_apply_with_dockerfile_name(
 
     assert!(
         !fs_state.contains_key(dockerfile_name),
-        "`defn.fs` contains a file with the Dockerfile name ({})",
-        dockerfile_name,
+        "`defn.fs` contains file with the Dockerfile name ({dockerfile_name})",
     );
 
     fs_state.insert(dockerfile_name, dockerfile);
@@ -160,11 +159,7 @@ pub fn assert_create_dir(dir: String, name: &str) -> String {
     let path = dir + "/" + name;
 
     fs::create_dir(&path)
-        .unwrap_or_else(|e| panic!(
-            "couldn't create directory: {}: {}",
-            path,
-            e,
-        ));
+        .unwrap_or_else(|e| panic!("couldn't create directory: {path}: {e}"));
 
     path
 }

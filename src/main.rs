@@ -259,10 +259,8 @@ fn new_tagged_img_name(img_name: &str, tag: &str) -> String {
 fn exit_code_from_exit_status(status: ExitStatus) -> i32 {
     if let Some(code) = status.code() {
         code
-    } else if status.success() {
-        0
     } else {
-        1
+        i32::from(!status.success())
     }
 }
 
@@ -483,7 +481,7 @@ struct WriterFileActionLogger<'a> {
     w: &'a mut dyn Write,
 }
 
-impl<'a> FileActionLogger for WriterFileActionLogger<'a> {
+impl FileActionLogger for WriterFileActionLogger<'_> {
     fn log_file_action(&mut self, file: &Path, action: FileAction)
         -> Result<(), IoError>
     {

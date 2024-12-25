@@ -102,8 +102,7 @@ pub fn assert_remove_volume(name: &str) {
 
     let output = cmd.output()
         .unwrap_or_else(|_| panic!(
-            "couldn't get output for `docker volume rm {}`",
-            name,
+            "couldn't get output for `docker volume rm {name}`",
         ));
 
     if output.status.success() {
@@ -112,8 +111,7 @@ pub fn assert_remove_volume(name: &str) {
 
     let stderr = str::from_utf8(&output.stderr)
         .unwrap_or_else(|_| panic!(
-            "couldn't decode STDERR for `docker volume rm {}`",
-            name,
+            "couldn't decode STDERR for `docker volume rm {name}`",
         ));
 
     let allowable_stderr = format!("Error: No such volume: {name}\n");

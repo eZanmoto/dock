@@ -67,7 +67,7 @@ where
     // returned an unexpected error.
     let tag_result =
         Command::new("docker")
-            .args(&["tag", target_img, cache_img])
+            .args(["tag", target_img, cache_img])
             .output()
             .context(TagFailed)?;
 
@@ -89,14 +89,14 @@ where
     // tagging succeeded.
     if tag_result.status.success() {
         if build_success {
-            docker::assert_run(&["rmi", cache_img])
+            docker::assert_run(["rmi", cache_img])
                 .with_context(|| RemoveOldImageFailed{
                     build_result: build_result.clone(),
                 })?;
         } else {
             // TODO Investigate whether this is needed, and whether `cache_img`
             // still exists after this runs.
-            docker::assert_run(&["tag", cache_img, target_img])
+            docker::assert_run(["tag", cache_img, target_img])
                 .with_context(|| UntagFailed{
                     build_result: build_result.clone(),
                 })?;

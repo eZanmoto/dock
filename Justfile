@@ -65,6 +65,7 @@ check_lint:
         -D warnings \
         -D clippy::pedantic \
         -D clippy::cargo \
+        -A clippy::manual-let-else \
         -A clippy::module-name-repetitions
     python3 scripts/check_line_length.py \
         '**/*.rs' \

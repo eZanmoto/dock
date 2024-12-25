@@ -214,7 +214,7 @@ impl DirTemplatesSource {
         let raw_dir = dir.to_str()
             .context(InvalidUtf8Dir{path: self.path.clone()})?;
 
-        run_in::assert_run("cp", &["-r", self.path.as_str(), raw_dir])
+        run_in::assert_run("cp", ["-r", self.path.as_str(), raw_dir])
             .context(CopyDirFailed{path: self.path.clone()})?;
 
         Ok(())
@@ -254,7 +254,7 @@ pub fn init(
     }
 
     // TODO Avoid creating a temporary directory on each run.
-    let output = run_in::assert_run("mktemp", &["--directory"])
+    let output = run_in::assert_run("mktemp", ["--directory"])
         .context(CreateTmpDirFailed)?;
 
     let raw_tmp_dir = str::from_utf8(&output.stdout)
@@ -380,7 +380,7 @@ where
     F: FnMut(&DirEntry, FileType) -> Result<(), E>,
     E: 'static + Debug + Display + StdError,
 {
-    let entries = fs::read_dir(&dir)
+    let entries = fs::read_dir(dir)
         .context(ReadDirFailed{dir})?;
 
     let mut frontier: Vec<Result<DirEntry, IoError>> = entries.collect();

@@ -84,7 +84,7 @@ impl<'a> TimingPrefixingCmdLogger<'a> {
     }
 }
 
-impl<'a> CommandLogger for TimingPrefixingCmdLogger<'a> {
+impl CommandLogger for TimingPrefixingCmdLogger<'_> {
     fn log(&mut self, msg: CmdLoggerMsg) {
         if self.err.is_some() {
             return;
@@ -149,7 +149,7 @@ impl<'a> PrefixingCmdLogger<'a> {
     }
 }
 
-impl<'a> CommandLogger for PrefixingCmdLogger<'a> {
+impl CommandLogger for PrefixingCmdLogger<'_> {
     fn log(&mut self, msg: CmdLoggerMsg) {
         if self.err.is_some() {
             return;

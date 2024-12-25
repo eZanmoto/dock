@@ -59,7 +59,7 @@ fn short_tag_argument() {
     });
     let mut cmd = new_test_cmd(test.dir, &test.image_tagged_name);
     let flag = "-t";
-    cmd.args(&[flag, &test.image_tagged_name]);
+    cmd.args([flag, &test.image_tagged_name]);
 
     let cmd_result = cmd.assert();
 
@@ -87,7 +87,7 @@ fn long_tag_argument() {
     });
     let mut cmd = new_test_cmd(test.dir, &test.image_tagged_name);
     let flag = "--tag";
-    cmd.args(&[flag, &test.image_tagged_name]);
+    cmd.args([flag, &test.image_tagged_name]);
 
     let cmd_result = cmd.assert();
 

@@ -20,7 +20,7 @@ impl DockerBuild {
     // NOTE This parse depends on the specific STDERR returned by the Docker
     // client. This parse able to handle `Docker Engine - Community` version
     // `23.0.3` of the Docker client.
-    pub fn parse_from_stderr<'a>(lines: &mut LineMatcher)
+    pub fn parse_from_stderr(lines: &mut LineMatcher)
         -> Result<Option<DockerBuild>, AssertError>
     {
         let img_id;
