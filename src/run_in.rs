@@ -242,8 +242,6 @@ pub enum RunInError {
         source,
     ))]
     PrepareRunInArgsFailed{source: PrepareRunInArgsError},
-    #[snafu(display("`docker run` failed: {}", source))]
-    DockerRunFailed{source: LoggingProcessRunError},
     #[snafu(display("`exec` failed: {}", source))]
     ExecFailed{source: IoError},
 }
