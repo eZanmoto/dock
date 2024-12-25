@@ -93,7 +93,7 @@ fn assert_build_result(cmd_result: AssertOutput, tagged_name: &str)
 
         build
     } else {
-        panic!("build was unsuccessful: {}", stderr);
+        panic!("build was unsuccessful: {stderr}");
     }
 }
 
@@ -359,7 +359,7 @@ fn cleanup_succeeds_even_if_image_not_removed() {
         assert_run::assert_run_stdout("docker", rm_args);
     }
     // (3)
-    let mut dockerfile = format!("FROM {}\n", base_img);
+    let mut dockerfile = format!("FROM {base_img}\n");
     let stdin = Stdin::Str(dockerfile.clone());
     let test_img = test_setup::test_image_tagged_name(test_name);
     // (4)

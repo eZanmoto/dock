@@ -518,7 +518,7 @@ fn invalid_environment_name() {
     let env_name = "invalidName";
     // (1)
     let dock_file = test_setup::render_dock_file("0.1", env_name, "{}");
-    let dockerfile_name: &str = &format!("{}.Dockerfile", env_name);
+    let dockerfile_name: &str = &format!("{env_name}.Dockerfile");
     let fs_state = &hashmap!{
         dockerfile_name => "FROM scratch",
         "dock.yaml" => &dock_file,

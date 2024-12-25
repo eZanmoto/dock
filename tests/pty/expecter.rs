@@ -234,7 +234,7 @@ impl Expecter {
                 )));
 
             if n == 0 {
-                self.fail(&format!("unexpected EOF; expecting '{}'", substr));
+                self.fail(&format!("unexpected EOF; expecting '{substr}'"));
             }
 
             self.buf_used += n;

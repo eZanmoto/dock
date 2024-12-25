@@ -186,7 +186,7 @@ impl Drop for Pty {
             if e.kind() == ErrorKind::InvalidInput {
                 return;
             }
-            panic!("couldn't kill the PTY process: {}", e);
+            panic!("couldn't kill the PTY process: {e}");
         }
 
         self.wait()

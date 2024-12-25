@@ -140,7 +140,7 @@ mod tests {
     }
 
     fn assert_write_test_file(test_name: &str, content: &[u8]) -> String {
-        let path = format!("{}/{}", TEST_DIR, test_name);
+        let path = format!("{TEST_DIR}/{test_name}");
 
         // TODO Create a new sub-test directory to contain test files.
         let mut f =

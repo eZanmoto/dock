@@ -65,22 +65,18 @@ fn main() {
     let rebuild_about: &str =
         "Replace a tagged Docker image with a new build";
     let run_about: &str = &format!(
-        "Run a command in an environment defined in `{}`",
-        dock_file_name,
+        "Run a command in an environment defined in `{dock_file_name}`",
     );
     let shell_about: &str = &format!(
-        "Start a shell in an environment defined in `{}`",
-        dock_file_name,
+        "Start a shell in an environment defined in `{dock_file_name}`",
     );
     let init_about: &str =
         "Initialise the current directory with a Dock environment";
     let cache_tag_long_help: &str = &format!(
         "The tag to use for the image that will be replaced by the rebuild. \
-         If an image with the tagged name `{tagged_img_flag}` exists then its \
-         tag will be replaced by `{cache_tag_flag}` for the duration of the \
+         If an image with the tagged name `{TAGGED_IMG_FLAG}` exists then its \
+         tag will be replaced by `{CACHE_TAG_FLAG}` for the duration of the \
          rebuild.",
-        tagged_img_flag = TAGGED_IMG_FLAG,
-        cache_tag_flag = CACHE_TAG_FLAG,
     );
 
     let args =
@@ -208,9 +204,7 @@ fn handle_arg_matches(args: &ArgMatches, dock_file_name: &str) {
             // All subcommands defined in `args_defn` should be handled here,
             // so matching an unhandled command shouldn't happen.
             panic!(
-                "unexpected command '{}' (arguments: '{:?}')",
-                arg_name,
-                sub_args,
+                "unexpected command '{arg_name}' (arguments: '{sub_args:?}')",
             );
         },
         _ => {
@@ -234,8 +228,7 @@ fn rebuild(target_img: &str, cache_tag: &str, docker_args: &[&str]) -> i32 {
             name
         } else {
             eprintln!(
-                "`{}` must contain exactly one `:`",
-                TAGGED_IMG_FLAG,
+                "`{TAGGED_IMG_FLAG}` must contain exactly one `:`",
             );
             return 1;
         };
@@ -252,7 +245,7 @@ fn rebuild(target_img: &str, cache_tag: &str, docker_args: &[&str]) -> i32 {
             exit_code_from_exit_status(exit_status)
         },
         Err(e) => {
-            eprintln!("{}", e);
+            eprintln!("{e}");
 
             1
         },
@@ -260,7 +253,7 @@ fn rebuild(target_img: &str, cache_tag: &str, docker_args: &[&str]) -> i32 {
 }
 
 fn new_tagged_img_name(img_name: &str, tag: &str) -> String {
-        format!("{}:{}", img_name, tag)
+        format!("{img_name}:{tag}")
 }
 
 fn exit_code_from_exit_status(status: ExitStatus) -> i32 {
@@ -391,7 +384,7 @@ fn handle_run_in(
                     write_streams(&mut stdout, &mut stderr, chunks);
                 },
                 (e, _) => {
-                    eprintln!("{}", e);
+                    eprintln!("{e}");
                 },
             };
 
@@ -413,17 +406,17 @@ fn write_streams(
             };
 
         if let Err(e) = out.write_all(bs) {
-            eprintln!("couldn't write stream ({:?}): {}", stream, e);
+            eprintln!("couldn't write stream ({stream:?}): {e}");
             return;
         }
     }
 
     if let Err(e) = stdout.flush() {
-        eprintln!("couldn't flush STDOUT: {}", e);
+        eprintln!("couldn't flush STDOUT: {e}");
     }
 
     if let Err(e) = stderr.flush() {
-        eprintln!("couldn't flush STDERR: {}", e);
+        eprintln!("couldn't flush STDERR: {e}");
     }
 }
 
@@ -449,7 +442,7 @@ fn init(dock_file_name: &str, args: &ArgMatches) -> i32 {
                 source
             },
             Err(e) => {
-                eprintln!("{}", e);
+                eprintln!("{e}");
                 return 1;
             },
         };
@@ -477,7 +470,7 @@ fn init(dock_file_name: &str, args: &ArgMatches) -> i32 {
                 return 2;
             },
             e => {
-                eprintln!("{}", e);
+                eprintln!("{e}");
                 return 1;
             },
         }

@@ -36,7 +36,7 @@ fn containers_for_image(tagged_name: &str) -> Vec<String> {
             "ps",
             "--all",
             "--quiet",
-            &format!("--filter=ancestor={}", tagged_name),
+            &format!("--filter=ancestor={tagged_name}"),
         ],
     )
 }
@@ -48,8 +48,7 @@ pub fn assert_remove_image(image_tagged_name: &str) {
 
     let output = cmd.output()
         .unwrap_or_else(|_| panic!(
-            "couldn't get output for `docker rmi {}`",
-            image_tagged_name,
+            "couldn't get output for `docker rmi {image_tagged_name}`",
         ));
 
     if output.status.success() {
@@ -58,15 +57,13 @@ pub fn assert_remove_image(image_tagged_name: &str) {
 
     let stderr = str::from_utf8(&output.stderr)
         .unwrap_or_else(|_| panic!(
-            "couldn't decode STDERR for `docker rmi {}`",
-            image_tagged_name,
+            "couldn't decode STDERR for `docker rmi {image_tagged_name}`",
         ));
 
     let allowable_stderr = format!(
-        "Error response from daemon: No such image: {}\n",
-        image_tagged_name,
+        "Error response from daemon: No such image: {image_tagged_name}\n",
     );
-    assert!(stderr == allowable_stderr, "unexpected STDERR: {:?}", output);
+    assert!(stderr == allowable_stderr, "unexpected STDERR: {output:?}");
 }
 
 pub fn assert_image_exists(image_tagged_name: &str) {
@@ -95,7 +92,7 @@ pub fn assert_get_local_image_tagged_names() -> Vec<String> {
 // descended from the `tagged_name` image.
 pub fn assert_no_containers_from_image(tagged_name: &str) {
     let ids = containers_for_image(tagged_name);
-    assert!(ids.is_empty(), "containers were found for '{}'", tagged_name);
+    assert!(ids.is_empty(), "containers were found for '{tagged_name}'");
 }
 
 pub fn assert_remove_volume(name: &str) {
@@ -119,6 +116,6 @@ pub fn assert_remove_volume(name: &str) {
             name,
         ));
 
-    let allowable_stderr = format!("Error: No such volume: {}\n", name);
-    assert!(stderr == allowable_stderr, "unexpected STDERR: {:?}", output);
+    let allowable_stderr = format!("Error: No such volume: {name}\n");
+    assert!(stderr == allowable_stderr, "unexpected STDERR: {output:?}");
 }

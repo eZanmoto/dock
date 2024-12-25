@@ -71,7 +71,7 @@ where
             .output()
             .context(TagFailed)?;
 
-    let tag_flag = &format!("--tag={}", target_img);
+    let tag_flag = &format!("--tag={target_img}");
 
     // By default, Docker removes intermediate containers after a successful
     // build, but leaves them after a failed build. We use `--force-rm` to

@@ -69,7 +69,7 @@ fn short_tag_argument() {
         // (B)
         .stdout("")
         // (C)
-        .stderr(format!("unsupported argument: `{}`\n", flag));
+        .stderr(format!("unsupported argument: `{flag}`\n"));
 }
 
 #[test]
@@ -97,7 +97,7 @@ fn long_tag_argument() {
         // (B)
         .stdout("")
         // (C)
-        .stderr(format!("unsupported argument: `{}`\n", flag));
+        .stderr(format!("unsupported argument: `{flag}`\n"));
 }
 
 #[test]
@@ -125,5 +125,5 @@ fn prefix_tag_argument() {
         // (B)
         .stdout("")
         // (C)
-        .stderr(format!("unsupported argument: `{}`\n", arg));
+        .stderr(format!("unsupported argument: `{arg}`\n"));
 }

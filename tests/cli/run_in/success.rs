@@ -1039,7 +1039,7 @@ fn run_test_cmd_with_pty(root_test_dir: &str, args: &[&str]) -> PtyResult {
         } else if i > 10 {
             let output = str::from_utf8(&raw_output)
                 .expect("output wasn't valid UTF-8");
-            panic!("process didn't exit within timeout: {}", output);
+            panic!("process didn't exit within timeout: {output}");
         }
 
         thread::sleep(Duration::from_secs(1));
@@ -1087,11 +1087,11 @@ impl PtyResult {
     fn code(self, exp: i32) -> PtyResult {
         if let Some(code) = self.exit_status.code() {
             if code != exp {
-                self.fail(&format!("unexpected exit code: expected {}", exp));
+                self.fail(&format!("unexpected exit code: expected {exp}"));
             }
         } else {
             let status = self.exit_status;
-            self.fail(&format!("couldn't extract exit code: {}", status));
+            self.fail(&format!("couldn't extract exit code: {status}"));
         }
 
         self
@@ -1114,7 +1114,7 @@ impl PtyResult {
         let indented_summary = prefix_lines("    ", &summary)
             .expect("invalid UTF-8");
 
-        panic!("\n{}", indented_summary);
+        panic!("\n{indented_summary}");
     }
 }
 
@@ -1361,7 +1361,7 @@ fn run_in_with_extended_env_flag() {
         dockerfile_steps: "",
         fs: &hashmap!{},
     });
-    let env_arg = &format!("{}-env:", test_name);
+    let env_arg = &format!("{test_name}-env:");
 
     let cmd_result = run_test_cmd(&test.dir, &[env_arg, "echo", "hi"]);
 

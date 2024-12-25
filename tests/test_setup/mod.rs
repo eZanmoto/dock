@@ -38,7 +38,7 @@ pub fn assert_apply_with_schema_version(
 
     let dock_yaml_name = "dock.yaml";
     let dock_yaml_exists = fs_state.contains_key(dock_yaml_name);
-    assert!(!dock_yaml_exists, "`defn.fs` contains `{}`", dock_yaml_name);
+    assert!(!dock_yaml_exists, "`defn.fs` contains `{dock_yaml_name}`");
 
     let dock_file = render_dock_file(schema_vsn, defn.name, env_defn);
     fs_state.insert(dock_yaml_name, &dock_file);
@@ -127,11 +127,11 @@ pub fn assert_apply_with_dockerfile_name(
 }
 
 pub fn test_image_tagged_name(test_name: &str) -> String {
-    format!("{}.{}:latest", IMAGE_NAME_ROOT, test_name)
+    format!("{IMAGE_NAME_ROOT}.{test_name}:latest")
 }
 
 pub fn cache_volume_prefix(test_name: &str) -> String {
-    format!("{}.{}.{}.cache", TEST_ORG, TEST_PROJ, test_name)
+    format!("{TEST_ORG}.{TEST_PROJ}.{test_name}.cache")
 }
 
 pub struct Definition<'a> {
