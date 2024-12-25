@@ -905,10 +905,10 @@ fn debug_flag() {
         // (B)
         .stderr("")
         // (C)
-        .stdout(predicate_match(r"\[\$\] docker build .*"))
-        .stdout(predicate_match(r"\[>\] Sending build context to Docker .*"))
-        .stdout(predicate_match(r"\[>\] Step 1/2 : FROM .*"))
-        .stdout(predicate_match(r"\[>\] Successfully built .*"))
+        .stdout(predicate_match(r"\[\$\] docker build "))
+        .stdout(predicate_match(r"\[!\] #[0-9]+ building with .default. "))
+        .stdout(predicate_match(r"\[!\] #[0-9]+ exporting to image"))
+        .stdout(predicate_match(r"\[!\] #[0-9]+ naming to"))
         .stdout(predicate_match(r"\[\$\] docker run .*"))
         .stdout(predicate_match(r"hello"));
     docker::assert_image_exists(&test.image_tagged_name);

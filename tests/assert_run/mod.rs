@@ -1,4 +1,4 @@
-// Copyright 2022 Sean Kelleher. All rights reserved.
+// Copyright 2022-2024 Sean Kelleher. All rights reserved.
 // Use of this source code is governed by an MIT
 // licence that can be found in the LICENCE file.
 
@@ -39,14 +39,10 @@ pub fn assert_run_output(prog: &str, args: &[&str]) -> Output {
         stdout: str::from_utf8(&output.stdout)
             .expect("couldn't decode STDOUT as UTF-8")
             .to_string(),
-        stderr: str::from_utf8(&output.stderr)
-            .expect("couldn't decode STDERR as UTF-8")
-            .to_string(),
     }
 }
 
 #[derive(Debug)]
 pub struct Output {
     pub stdout: String,
-    pub stderr: String,
 }

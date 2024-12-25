@@ -62,8 +62,10 @@ pub fn assert_remove_image(image_tagged_name: &str) {
             image_tagged_name,
         ));
 
-    let allowable_stderr =
-        format!("Error: No such image: {}\n", image_tagged_name);
+    let allowable_stderr = format!(
+        "Error response from daemon: No such image: {}\n",
+        image_tagged_name,
+    );
     assert!(stderr == allowable_stderr, "unexpected STDERR: {:?}", output);
 }
 

@@ -1,4 +1,4 @@
-// Copyright 2021-2022 Sean Kelleher. All rights reserved.
+// Copyright 2021-2024 Sean Kelleher. All rights reserved.
 // Use of this source code is governed by an MIT
 // licence that can be found in the LICENCE file.
 
@@ -81,30 +81,29 @@ fn assert_build_result(cmd_result: AssertOutput, tagged_name: &str)
     -> DockerBuild
 {
     let cmd_result = cmd_result.code(0);
-    let cmd_result = cmd_result.stderr("");
 
-    let stdout = new_str_from_cmd_stdout(&cmd_result);
-    let maybe_build = assert_docker_build_stdout(stdout);
+    let stderr = new_str_from_cmd_stderr(&cmd_result);
+    let maybe_build = assert_docker_build_stderr(stderr);
 
     if let Some(build) = maybe_build {
         assert_eq!(build.tagged_name(), tagged_name);
 
         build
     } else {
-        panic!("build was unsuccessful: {}", stdout);
+        panic!("build was unsuccessful: {}", stderr);
     }
 }
 
-pub fn new_str_from_cmd_stdout(cmd_result: &AssertOutput) -> &str {
-    let stdout_bytes = &cmd_result.get_output().stdout;
+pub fn new_str_from_cmd_stderr(cmd_result: &AssertOutput) -> &str {
+    let stderr_bytes = &cmd_result.get_output().stderr;
 
-    str::from_utf8(stdout_bytes)
-        .expect("couldn't decode STDOUT")
+    str::from_utf8(stderr_bytes)
+        .expect("couldn't decode STDERR")
 }
 
-pub fn assert_docker_build_stdout(stdout: &str) -> Option<DockerBuild> {
-    let mut lines = LineMatcher::new(stdout);
-    let result = DockerBuild::parse_from_stdout(&mut lines);
+pub fn assert_docker_build_stderr(stderr: &str) -> Option<DockerBuild> {
+    let mut lines = LineMatcher::new(stderr);
+    let result = DockerBuild::parse_from_stderr(&mut lines);
 
     match result {
         Ok(v) => {
@@ -112,7 +111,7 @@ pub fn assert_docker_build_stdout(stdout: &str) -> Option<DockerBuild> {
         },
         Err(e) => {
             let lnum = lines.line_num();
-            let msg = line_matcher::render_match_error(stdout, lnum, &e);
+            let msg = line_matcher::render_match_error(stderr, lnum, &e);
             panic!("{}", msg);
         },
     }
