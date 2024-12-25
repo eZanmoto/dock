@@ -63,6 +63,9 @@ fn new_test_cmd(
     cmd.args(vec!["rebuild", image_tagged_name, "."]);
     cmd.current_dir(root_test_dir);
     cmd.env_clear();
+    // We set `HOME` because if unset then Docker BuildKit will create a
+    // `.docker` directory in the working directory during builds.
+    cmd.env("HOME", env!("HOME"));
 
     cmd
 }
@@ -307,6 +310,9 @@ fn new_test_cmd_with_stdin(stdin: Stdin, image_tagged_name: &str)
         .expect("couldn't create command for package binary");
     cmd.args(vec!["rebuild", image_tagged_name, "-"]);
     cmd.env_clear();
+    // We set `HOME` because if unset then Docker BuildKit will create a
+    // `.docker` directory in the working directory during builds.
+    cmd.env("HOME", env!("HOME"));
 
     match stdin {
         Stdin::File(path) => {

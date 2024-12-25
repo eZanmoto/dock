@@ -64,6 +64,9 @@ pub fn run_test_cmd(root_test_dir: &str, args: &[&str]) -> Assert {
     cmd.args(args);
     cmd.current_dir(root_test_dir);
     cmd.env_clear();
+    // We set `HOME` because if unset then Docker BuildKit will create a
+    // `.docker` directory in the working directory during builds.
+    cmd.env("HOME", env!("HOME"));
 
     if let Ok(v) = env::var(DOCK_HOSTPATHS_VAR_NAME) {
         cmd.env(DOCK_HOSTPATHS_VAR_NAME, v);
@@ -293,6 +296,9 @@ pub fn run_test_cmd_from_subdir(
     cmd.current_dir(p);
 
     cmd.env_clear();
+    // We set `HOME` because if unset then Docker BuildKit will create a
+    // `.docker` directory in the working directory during builds.
+    cmd.env("HOME", env!("HOME"));
 
     cmd.assert()
 }

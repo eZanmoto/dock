@@ -37,6 +37,9 @@ fn new_test_cmd(
     cmd.args(vec!["rebuild", image_tagged_name, "."]);
     cmd.current_dir(root_test_dir);
     cmd.env_clear();
+    // We set `HOME` because if unset then Docker BuildKit will create a
+    // `.docker` directory in the working directory during builds.
+    cmd.env("HOME", env!("HOME"));
 
     cmd
 }
