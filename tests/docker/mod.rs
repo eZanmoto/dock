@@ -114,6 +114,8 @@ pub fn assert_remove_volume(name: &str) {
             "couldn't decode STDERR for `docker volume rm {name}`",
         ));
 
-    let allowable_stderr = format!("Error: No such volume: {name}\n");
+    let allowable_stderr = format!(
+        "Error response from daemon: No such volume: {name}\n",
+    );
     assert!(stderr == allowable_stderr, "unexpected STDERR: {output:?}");
 }

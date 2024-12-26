@@ -46,6 +46,8 @@ use crate::option::OptionResultExt;
 use crate::rebuild;
 use crate::rebuild::DockerContext;
 use crate::rebuild::RebuildError;
+use crate::spinner;
+use crate::spinner::SpinError;
 use crate::trie::InsertError;
 use crate::trie::Trie;
 
@@ -101,6 +103,9 @@ impl CommandLogger for CmdLoggers<'_> {
 }
 
 pub fn run_in(
+    // NOTE We would ideally take `logger` as `dyn CommandLogger`, but this
+    // type can't be shared between threads safely, which is required by
+    // `spinner::spin`.
     logger: &mut dyn CommandLogger,
     dock_file_name: &str,
     maybe_env_name: Option<&str>,
@@ -109,6 +114,7 @@ pub fn run_in(
     // TODO Remove the `shell` parameter to decouple this function from the
     // `shell` subcommand.
     shell: Option<PathBuf>,
+    show_rebuild_spinner: bool,
 ) -> Result<ExitStatus, RunInError> {
     let (dock_dir, conf) = find_and_parse_dock_config(dock_file_name)
         .context(FindAndParseDockConfigFailed{dock_file_name})?;
@@ -137,7 +143,7 @@ pub fn run_in(
                 .map(AsRef::as_ref)
                 .collect();
 
-        rebuild_for_run_in(
+        let mut rebuild = || rebuild_for_run_in(
             logger,
             &dock_dir,
             env_name,
@@ -145,8 +151,20 @@ pub fn run_in(
             &target_img,
             &cache_img,
             &build_args,
-        )
-            .context(RebuildForRunInFailed)?;
+        );
+
+        if show_rebuild_spinner {
+            let rebuild_msg = format!("Rebuilding '{target_img}'");
+            spinner::spin(
+                rebuild_msg,
+                rebuild,
+            )
+                .context(SpinFailed)?
+                .context(SpinnerRebuildForRunInFailed)?;
+        } else {
+            rebuild()
+                .context(RebuildForRunInFailed)?;
+        }
     }
 
     let vol_name_prefix =
@@ -235,6 +253,10 @@ pub enum RunInError {
         source,
     ))]
     RelPathFromContextPathFailed{source: NewRelPathError},
+    #[snafu(display("{}", source))]
+    SpinFailed{source: SpinError},
+    #[snafu(display("{}", source))]
+    SpinnerRebuildForRunInFailed{source: RebuildForRunInError},
     #[snafu(display("{}", source))]
     RebuildForRunInFailed{source: RebuildForRunInError},
     #[snafu(display(

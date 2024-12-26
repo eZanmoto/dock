@@ -6,7 +6,7 @@ use std::env;
 use std::io;
 use std::io::Error as IoError;
 use std::io::StderrLock;
-use std::io::StdoutLock;
+use std::io::Stdout;
 use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
@@ -27,6 +27,7 @@ mod logging_process;
 mod option;
 mod rebuild;
 mod run_in;
+mod spinner;
 mod trie;
 
 use cmd_loggers::CapturingCmdLogger;
@@ -333,8 +334,11 @@ fn handle_run_in(
         }
     }
 
-    let stdout = io::stdout();
-    let mut stdout = stdout.lock();
+    let mut stdout = io::stdout();
+    // TODO We would ideally get the lock on `stdout` here, but this blocks the
+    // global access to STDOUT that is currently done in `spinner::spin()`.
+    // This should be replaced with a mechanism to pass the reference to
+    // `stdout` to that function, when time allows.
 
     let stderr = io::stderr();
     let mut stderr = stderr.lock();
@@ -354,6 +358,8 @@ fn handle_run_in(
             CmdLoggers::Capturing(CapturingCmdLogger::new())
         };
 
+    let show_rebuild_spinner = shell.is_some() && !debug;
+
     let result = run_in::run_in(
         &mut logger,
         dock_file_name,
@@ -361,6 +367,7 @@ fn handle_run_in(
         &Rebuild{action: rebuild_action, cache_tag: cache_tag.to_string()},
         args,
         shell,
+        show_rebuild_spinner,
     );
 
     // TODO Check if the prefixing command logger has an error.
@@ -392,7 +399,7 @@ fn handle_run_in(
 }
 
 fn write_streams(
-    mut stdout: &mut StdoutLock,
+    mut stdout: &mut Stdout,
     mut stderr: &mut StderrLock,
     chunks: &[(Stream, Vec<u8>)],
 ) {
