@@ -1,4 +1,4 @@
-# Copyright 2022 Sean Kelleher. All rights reserved.
+# Copyright 2022-2024 Sean Kelleher. All rights reserved.
 # Use of this source code is governed by an MIT
 # licence that can be found in the LICENCE file.
 
@@ -65,6 +65,7 @@ check_lint:
         -D warnings \
         -D clippy::pedantic \
         -D clippy::cargo \
+        -A clippy::manual-let-else \
         -A clippy::module-name-repetitions
     python3 scripts/check_line_length.py \
         '**/*.rs' \

@@ -1,4 +1,4 @@
-// Copyright 2022 Sean Kelleher. All rights reserved.
+// Copyright 2022-2024 Sean Kelleher. All rights reserved.
 // Use of this source code is governed by an MIT
 // licence that can be found in the LICENCE file.
 
@@ -13,6 +13,7 @@ use super::success::TestDefinition;
 
 use crate::predicates::prelude::predicate;
 use crate::predicates::prelude::predicate::str as predicate_str;
+use crate::predicates::str::RegexPredicate;
 
 #[test]
 // Given (1) the dock file defines an empty environment called `<env>`
@@ -38,20 +39,28 @@ fn run_in_with_build_failure() {
     let cmd_result = success::run_test_cmd(&test.dir, &[test_name, "true"]);
 
     // NOTE This error message depends on the specific message returned by the
-    // Docker server. This message is correct when using
-    // `Docker Engine - Community` version `19.03.12` as the Docker server.
-    let exp = "The command '/bin/sh -c exit 2' returned a non-zero code: 2\n";
+    // Docker client. This message is correct when using
+    // `Docker Engine - Community` version `23.0.3` as the Docker client.
+    let exp = "ERROR: executor failed running \\[/bin/sh -c exit 2\\]";
     let cmd_result =
         cmd_result
             // (A)
             .code(1)
             // (B)
-            .stderr(exp);
-    let stdout = rebuild_success::new_str_from_cmd_stdout(&cmd_result);
+            .stderr(predicate_match(exp));
+    let stdout = rebuild_success::new_str_from_cmd_stderr(&cmd_result);
     // (C)
-    rebuild_success::assert_docker_build_stdout(stdout);
+    rebuild_success::assert_docker_build_stderr(stdout);
     // (D)
     docker::assert_image_doesnt_exist(&test.image_tagged_name);
+}
+
+// TODO Duplicated from `tests/cli/run_in/success.rs`.
+pub fn predicate_match(s: &str) -> RegexPredicate {
+    predicate_str::is_match(s)
+        .unwrap_or_else(|e| panic!(
+            "couldn't generate a pattern match for '{s}': {e}",
+        ))
 }
 
 #[test]
@@ -124,12 +133,15 @@ fn build_with_file_outside_context_directory() {
 
     let cmd_result = success::run_test_cmd(&test.dir, &[test_name, "true"]);
 
+    // NOTE This error message depends on the specific message returned by the
+    // Docker client. This message is correct when using
+    // `Docker Engine - Community` version `23.0.3` as the Docker client.
     cmd_result
         // (A)
         .code(1)
         // (B)
         .stderr(success::predicate_match(
-            "COPY failed: .*/test.txt: no such file or directory",
+            "ERROR: \"/test.txt\" not found: not found",
         ));
     // (C)
     docker::assert_image_doesnt_exist(&test.image_tagged_name);
@@ -504,7 +516,7 @@ fn invalid_environment_name() {
     let env_name = "invalidName";
     // (1)
     let dock_file = test_setup::render_dock_file("0.1", env_name, "{}");
-    let dockerfile_name: &str = &format!("{}.Dockerfile", env_name);
+    let dockerfile_name: &str = &format!("{env_name}.Dockerfile");
     let fs_state = &hashmap!{
         dockerfile_name => "FROM scratch",
         "dock.yaml" => &dock_file,

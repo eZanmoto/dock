@@ -1,8 +1,8 @@
-# Copyright 2021-2023 Sean Kelleher. All rights reserved.
+# Copyright 2021-2024 Sean Kelleher. All rights reserved.
 # Use of this source code is governed by an MIT
 # licence that can be found in the LICENCE file.
 
-FROM rust:1.60.0-buster
+FROM rust:1.83.0-bullseye
 
 RUN \
     rustup component add \
@@ -15,8 +15,15 @@ RUN \
             --silent \
             --location \
             https://get.docker.com \
-        | VERSION=19.03.8 \
+        | VERSION=23.0.3 \
             sh
+
+# We create the `/.docker` directory manually because it's used by the latest
+# version of `docker`, and we make it writeable by everyone so that mounted
+# users can access `docker`.
+RUN \
+    mkdir /.docker \
+        && chmod 0777 /.docker
 
 RUN \
     cargo install \

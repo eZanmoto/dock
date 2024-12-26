@@ -1,4 +1,4 @@
-// Copyright 2022-2023 Sean Kelleher. All rights reserved.
+// Copyright 2022-2024 Sean Kelleher. All rights reserved.
 // Use of this source code is governed by an MIT
 // licence that can be found in the LICENCE file.
 
@@ -15,11 +15,13 @@ use std::process::Stdio;
 use std::ptr;
 use std::str;
 
+use crate::nix::errno::Errno;
 use crate::nix::libc::TIOCSWINSZ;
 use crate::nix::pty;
 use crate::nix::pty::OpenptyResult;
 use crate::nix::pty::Winsize;
 use crate::nix::sys::time::TimeVal;
+use crate::nix::unistd;
 
 use crate::timeout::Error as TimeoutError;
 use crate::timeout::FdReadWriter;
@@ -69,7 +71,12 @@ impl Pty {
             pty::openpty(winsize, None)
                 .expect("couldn't open a new PTY");
 
-        let new_follower_stdio = || Stdio::from_raw_fd(follower_fd);
+        let new_follower_stdio = || {
+            let fd = unistd::dup(follower_fd)
+                .expect("couldn't duplicate follower FD");
+
+            Stdio::from_raw_fd(fd)
+        };
 
         let child =
             Command::new(prog)
@@ -80,6 +87,13 @@ impl Pty {
                 .current_dir(current_dir)
                 .spawn()
                 .expect("couldn't spawn the new PTY process");
+
+        // We close `follower_fd` because otherwise this would remain as a
+        // lingering open FD after the others are closed when the new process
+        // terminates, and so would prevent EOF from being passed to
+        // `controller_fd`.
+        unistd::close(follower_fd)
+            .expect("couldn't close follower FD");
 
         // NOTE Care should be taken here because we end up with two references
         // to `controller_fd`, which circumvents a basic premise of the borrow
@@ -94,9 +108,9 @@ impl Pty {
     pub fn read(&mut self, buf: &mut [u8], timeout: Option<TimeVal>)
         -> Result<Option<usize>, TimeoutError>
     {
-        let result = self.stream.read(buf, timeout);
+        let r = self.stream.read(buf, timeout);
 
-        // If we encounter an error code 5, which corresponds to "Input/output
+        // If we encounter an `Errno::EIO`, which corresponds to "Input/output
         // error" in Rust, we regard that as an EOF signal and convert it to
         // match the Rust convention for `read`. This information is supported
         // by a number of non-authoritative sources, but a good summary is
@@ -108,13 +122,11 @@ impl Pty {
         // > `EAGAIN` before the slave has been first opened.
         //
         // It is presumed that `EIO` corresponds to "Input/output error".
-        if let Err(TimeoutError::OperationFailed{ref source}) = result {
-            if source.raw_os_error() == Some(5) {
+        if let Err(TimeoutError::OperationFailed{source: Errno::EIO}) = r {
                 return Ok(Some(0));
-            }
         }
 
-        result
+        r
     }
 
     pub fn write(&mut self, buf: &[u8], timeout: Option<TimeVal>)
@@ -172,7 +184,7 @@ impl Drop for Pty {
             if e.kind() == ErrorKind::InvalidInput {
                 return;
             }
-            panic!("couldn't kill the PTY process: {}", e);
+            panic!("couldn't kill the PTY process: {e}");
         }
 
         self.wait()

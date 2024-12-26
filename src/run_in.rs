@@ -87,7 +87,7 @@ pub enum CmdLoggers<'a> {
     Capturing(CapturingCmdLogger),
 }
 
-impl<'a> CommandLogger for CmdLoggers<'a> {
+impl CommandLogger for CmdLoggers<'_> {
     fn log(&mut self, msg: CmdLoggerMsg) {
         match self {
             Self::Debugging(logger) => {
@@ -141,7 +141,7 @@ pub fn run_in(
             logger,
             &dock_dir,
             env_name,
-            &env_context,
+            env_context.as_ref(),
             &target_img,
             &cache_img,
             &build_args,
@@ -156,7 +156,7 @@ pub fn run_in(
 
     if let Some(mut shell) = shell {
         if let Some(s) = &env.shell {
-            shell = s.clone();
+            shell.clone_from(s);
         }
 
         run_args.push(format!("--entrypoint={}", shell.display()));
@@ -242,14 +242,12 @@ pub enum RunInError {
         source,
     ))]
     PrepareRunInArgsFailed{source: PrepareRunInArgsError},
-    #[snafu(display("`docker run` failed: {}", source))]
-    DockerRunFailed{source: LoggingProcessRunError},
     #[snafu(display("`exec` failed: {}", source))]
     ExecFailed{source: IoError},
 }
 
 fn image_name(org: &str, proj: &str, env_name: &str) -> String {
-    format!("{}/{}.{}", org, proj, env_name)
+    format!("{org}/{proj}.{env_name}")
 }
 
 fn find_and_parse_dock_config(dock_file_name: &str)
@@ -362,7 +360,7 @@ fn rebuild_for_run_in(
     logger: &mut dyn CommandLogger,
     dock_dir: &AbsPath,
     env_name: &str,
-    maybe_context_sub_path: &Option<RelPath>,
+    maybe_context_sub_path: Option<&RelPath>,
     img: &str,
     cache_img: &str,
     args: &[&str],
@@ -371,7 +369,7 @@ fn rebuild_for_run_in(
 {
     // TODO Consider the fact that `env_name` may contain `/`; it may be worth
     // adding an `EnvName` type with validation in its constructor.
-    let dockerfile_name = OsString::from(format!("{}.Dockerfile", env_name));
+    let dockerfile_name = OsString::from(format!("{env_name}.Dockerfile"));
 
     let dockerfile_path =
         dock_dir.concat(&rel_path_from_component(dockerfile_name));
@@ -419,7 +417,7 @@ fn rel_path_from_component(c: OsString) -> RelPath {
 fn new_docker_context(
     dock_dir: &AbsPath,
     dockerfile_path: AbsPath,
-    maybe_context_sub_path: &Option<RelPath>,
+    maybe_context_sub_path: Option<&RelPath>,
 )
     -> Result<DockerContext, NewDockerContextError>
 {
@@ -474,19 +472,19 @@ fn prepare_run_in_args(
     run_args.extend(env.run_args.clone().unwrap_or_default());
 
     if let Some(dir) = &env.workdir {
-        run_args.push(format!("--workdir={}", dir));
+        run_args.push(format!("--workdir={dir}"));
     }
 
     if let Some(env_vars) = &env.env {
         for (k, v) in env_vars {
-            run_args.push(format!("--env={}={}", k, v));
+            run_args.push(format!("--env={k}={v}"));
         }
     }
 
     // TODO Add tests for nested mounting.
     let mut parsed_mounts = vec![];
     if let Some(mounts) = &env.mounts {
-        for (rel_outer_path, inner_path) in mounts.iter() {
+        for (rel_outer_path, inner_path) in mounts {
             let rel_outer_path =
                 RelPath::try_from(rel_outer_path.clone())
                     .context(ParseConfigOuterPathFailed{
@@ -520,9 +518,12 @@ fn prepare_run_in_args(
         let cur_hostpaths = hostpaths()
             .context(GetHostpathsFailed)?;
 
-        let args =
-            prepare_run_mount_args(dock_dir, &parsed_mounts, &cur_hostpaths)
-                .context(PrepareRunInMountArgsFailed)?;
+        let args = prepare_run_mount_args(
+            dock_dir,
+            &parsed_mounts,
+            cur_hostpaths.as_ref(),
+        )
+            .context(PrepareRunInMountArgsFailed)?;
 
         run_args.extend(args);
     }
@@ -583,17 +584,17 @@ fn prepare_run_cache_volumes_args(
 {
     let mut args = vec![];
 
-    for (name, path) in cache_volumes.iter() {
+    for (name, path) in cache_volumes {
         let path_abs_path = AbsPath::try_from(path.clone())
             .context(CacheVolDirAsAbsPathFailed)?;
 
         let path_cli_arg = path_abs_path.display()
             .context(RenderCacheVolDirFailed{dir: path_abs_path})?;
 
-        let vol_name = format!("{}.cache.{}", vol_name_prefix, name);
+        let vol_name = format!("{vol_name_prefix}.cache.{name}");
         let mount_spec =
-            format!("type=volume,src={},dst={}", vol_name, path_cli_arg);
-        let mount_arg = format!("--mount={}", mount_spec);
+            format!("type=volume,src={vol_name},dst={path_cli_arg}");
+        let mount_arg = format!("--mount={mount_spec}");
 
         args.push(mount_arg.clone());
 
@@ -693,7 +694,7 @@ fn prepare_mount_local_run_args(
 
             let user_group =
                 format!("{}:{}", user_id.trim_end(), group_id.trim_end());
-            args.push(format!("--user={}", user_group));
+            args.push(format!("--user={user_group}"));
         } else {
             args.push(format!("--user={}", user_id.trim_end()));
         }
@@ -706,11 +707,10 @@ fn prepare_mount_local_run_args(
             .context(GetDockerSockMetadataFailed)?;
 
         let mount_spec = format!(
-            "type=bind,src={docker_sock_path},dst={docker_sock_path}",
-            docker_sock_path = DOCKER_SOCK_PATH,
+            "type=bind,src={DOCKER_SOCK_PATH},dst={DOCKER_SOCK_PATH}",
         );
         args.extend(to_strings(&[
-            &format!("--mount={}", mount_spec),
+            &format!("--mount={mount_spec}"),
             &format!("--group-add={}", meta.gid()),
         ]));
     }
@@ -788,7 +788,7 @@ pub enum AssertRunError {
 fn prepare_run_mount_args(
     dock_dir: &AbsPath,
     mounts: &[(RelPath, PathBuf)],
-    cur_hostpaths: &Option<Hostpaths>,
+    cur_hostpaths: Option<&Hostpaths>,
 )
     -> Result<Vec<String>, PrepareRunInMountArgsError>
 {
@@ -831,19 +831,19 @@ fn prepare_run_mount_args(
 
     for (host_path, inner_path) in &hostpath_cli_args {
         let mount_spec =
-            format!("type=bind,src={},dst={}", host_path, inner_path);
+            format!("type=bind,src={host_path},dst={inner_path}");
 
-        args.push(format!("--mount={}", mount_spec));
+        args.push(format!("--mount={mount_spec}"));
     }
 
     let rendered_hostpaths = hostpath_cli_args
         .into_iter()
-        .map(|(hp, ip)| format!("{}:{}", hp, ip))
+        .map(|(host_path, inner_path)| format!("{host_path}:{inner_path}"))
         .collect::<Vec<String>>()
         .join(":");
 
     args.push(
-        format!("--env={}={}", DOCK_HOSTPATHS_VAR_NAME, rendered_hostpaths)
+        format!("--env={DOCK_HOSTPATHS_VAR_NAME}={rendered_hostpaths}")
     );
 
     Ok(args)
@@ -1075,14 +1075,14 @@ fn pairs<'a, T: Debug + ?Sized>(xs: &[&'a T]) -> Option<Vec<(&'a T, &'a T)>> {
             pairs.push((*a, *b));
         } else {
             // `chunks(2)` should always return slices of length 2.
-            panic!("chunk didn't have length 2: {:?}", pair);
+            panic!("chunk didn't have length 2: {pair:?}");
         }
     }
 
     Some(pairs)
 }
 
-fn apply_hostpath(maybe_hostpaths: &Option<Hostpaths>, path: &AbsPath)
+fn apply_hostpath(maybe_hostpaths: Option<&Hostpaths>, path: &AbsPath)
     -> Option<AbsPath>
 {
     if let Some(hps) = maybe_hostpaths {

@@ -1,13 +1,13 @@
-// Copyright 2022 Sean Kelleher. All rights reserved.
+// Copyright 2022-2024 Sean Kelleher. All rights reserved.
 // Use of this source code is governed by an MIT
 // licence that can be found in the LICENCE file.
 
-///! Types for managing absolute and relative paths.
-///!
-///! Provides alternatives to the standard `Path` and `PathBuf` primitives that
-///! allow distinguishing between absolute and relative paths. Note that these
-///! types store paths in canonical form, and don't support having path
-///! traversal components (such as `.` and `..`) in paths.
+//! Types for managing absolute and relative paths.
+//!
+//! Provides alternatives to the standard `Path` and `PathBuf` primitives that
+//! allow distinguishing between absolute and relative paths. Note that these
+//! types store paths in canonical form, and don't support having path
+//! traversal components (such as `.` and `..`) in paths.
 
 use std::char;
 use std::ffi::OsString;
@@ -44,7 +44,7 @@ impl AbsPath {
 
         let mut string = String::new();
         for component in &self.components {
-            string += &path::MAIN_SEPARATOR.to_string();
+            string += path::MAIN_SEPARATOR_STR;
             string += component.to_str()?;
         }
 
@@ -58,7 +58,7 @@ impl AbsPath {
 
         let mut string = String::new();
         for component in &self.components {
-            string += &path::MAIN_SEPARATOR.to_string();
+            string += path::MAIN_SEPARATOR_STR;
             if let Some(s) = component.to_str() {
                 string += s;
             } else {

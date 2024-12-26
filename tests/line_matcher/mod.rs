@@ -1,8 +1,7 @@
-// Copyright 2022 Sean Kelleher. All rights reserved.
+// Copyright 2022-2024 Sean Kelleher. All rights reserved.
 // Use of this source code is governed by an MIT
 // licence that can be found in the LICENCE file.
 
-use std::convert::From;
 use std::iter::Peekable;
 use std::string::ToString;
 use std::str::Lines;
@@ -28,116 +27,6 @@ impl<'a> LineMatcher<'a> {
         self.line_num
     }
 
-    /// # Errors
-    ///
-    /// Will return `Err` if the stream has more lines.
-    pub fn assert_eof(&mut self) -> Result<(), AssertEofError> {
-        match self.peek() {
-            None => Ok(()),
-            Some(_) => Err(AssertEofError::ExpectedEof),
-        }
-    }
-
-    /// # Errors
-    ///
-    /// Will return `Err` if the next line in the stream doesn't begin with
-    /// `prefix`.
-    pub fn assert_prefix<'b>(&mut self, prefix: &'b str)
-        -> Result<(), AssertPrefixError<'b>>
-    {
-        let line =
-            if let Some(ln) = self.next_line() {
-                ln
-            } else {
-                return Err(AssertPrefixError::UnexpectedEof);
-            };
-
-        if line.starts_with(prefix) {
-            Ok(())
-        } else {
-            Err(AssertPrefixError::UnmatchedPrefix{prefix})
-        }
-    }
-
-    /// Returns the next line in the stream with `prefix` removed from the
-    /// start of the string.
-    ///
-    /// # Errors
-    ///
-    /// Will return `Err` if the next line in the stream doesn't begin with
-    /// `prefix`.
-    pub fn assert_strip_prefix<'b>(&mut self, prefix: &'b str)
-        -> Result<&str, AssertPrefixError<'b>>
-    {
-        let line =
-            if let Some(ln) = self.next_line() {
-                ln
-            } else {
-                return Err(AssertPrefixError::UnexpectedEof);
-            };
-
-        if let Some(remainder) = line.strip_prefix(prefix) {
-            Ok(remainder)
-        } else {
-            Err(AssertPrefixError::UnmatchedPrefix{prefix})
-        }
-    }
-
-    /// Returns `true` if the next line in the stream starts with `prefix`,
-    /// and skips it.
-    ///
-    /// # Errors
-    ///
-    /// Will return `Err` if the stream has more lines.
-    pub fn skip_if_starts_with(&mut self, prefix: &str) -> bool {
-        let line =
-            if let Some(ln) = self.peek() {
-                ln
-            } else {
-                return false;
-            };
-
-        if line.starts_with(prefix) {
-            self.next_line();
-
-            return true;
-        }
-
-        false
-    }
-
-    /// # Errors
-    ///
-    /// Will return `Err` if the end of the stream is encountered.
-    pub fn assert_skip_until_starts_with<'b>(&mut self, prefix: &'b str)
-        -> Result<(), AssertPrefixError<'b>>
-    {
-        while self.skip_if_not_starts_with(prefix) {
-        }
-
-        // TODO This function should ideally be replaced with an equivalent
-        // function that returns `bool`, because in theory the only error that
-        // `assert_prefix` should return is `UnexpectedEof`.
-        self.assert_prefix(prefix)
-    }
-
-    pub fn skip_if_not_starts_with(&mut self, prefix: &str) -> bool {
-        let line =
-            if let Some(ln) = self.peek() {
-                ln
-            } else {
-                return false;
-            };
-
-        if !line.starts_with(prefix) {
-            self.next_line();
-
-            return true;
-        }
-
-        false
-    }
-
     pub fn peek(&mut self) -> Option<&&str> {
         self.lines.peek()
     }
@@ -161,40 +50,8 @@ impl<'a> LineMatcher<'a> {
 }
 
 #[derive(Debug)]
-pub enum AssertEofError {
-    ExpectedEof,
-}
-
-#[derive(Debug)]
-pub enum AssertPrefixError<'a> {
-    UnmatchedPrefix{prefix: &'a str},
+pub enum AssertError {
     UnexpectedEof,
-}
-
-#[derive(Debug)]
-pub enum AssertError<'a> {
-    ExpectedEof,
-    UnmatchedPrefix{prefix: &'a str},
-    UnexpectedEof,
-}
-
-impl<'a> From<AssertEofError> for AssertError<'a> {
-    fn from(source: AssertEofError) -> Self {
-        match source {
-            AssertEofError::ExpectedEof => Self::ExpectedEof,
-        }
-    }
-}
-
-impl<'a> From<AssertPrefixError<'a>> for AssertError<'a> {
-    fn from(source: AssertPrefixError<'a>) -> Self {
-        match source {
-            AssertPrefixError::UnmatchedPrefix{prefix} =>
-                Self::UnmatchedPrefix{prefix},
-            AssertPrefixError::UnexpectedEof =>
-                Self::UnexpectedEof,
-        }
-    }
 }
 
 #[must_use]
@@ -211,36 +68,6 @@ pub fn render_match_error(body: &str, line_num: usize, e: &AssertError)
     );
 
     match e {
-        AssertError::ExpectedEof => {
-            lines.push(
-                body
-                    .lines()
-                    .nth(line_num-1)
-                    .unwrap()
-                    .to_string()
-            );
-            lines.push(render_separator_with_msg("expected eof"));
-            lines.extend(
-                body
-                    .lines()
-                    .skip(line_num)
-                    .map(ToString::to_string)
-            );
-            lines.push(render_separator());
-        },
-        AssertError::UnmatchedPrefix{prefix} => {
-            lines.push(render_separator_with_msg("expected prefix"));
-            lines.push((*prefix).to_string());
-            lines.push(render_separator_with_msg("got"));
-            lines.push(
-                body
-                    .lines()
-                    .nth(line_num-1)
-                    .unwrap()
-                    .to_string()
-            );
-            lines.push(render_separator());
-        },
         AssertError::UnexpectedEof => {
             lines.push(render_separator_with_msg("unexpected eof"));
         },

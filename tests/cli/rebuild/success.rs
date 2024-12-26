@@ -1,4 +1,4 @@
-// Copyright 2021-2022 Sean Kelleher. All rights reserved.
+// Copyright 2021-2024 Sean Kelleher. All rights reserved.
 // Use of this source code is governed by an MIT
 // licence that can be found in the LICENCE file.
 
@@ -63,6 +63,9 @@ fn new_test_cmd(
     cmd.args(vec!["rebuild", image_tagged_name, "."]);
     cmd.current_dir(root_test_dir);
     cmd.env_clear();
+    // We set `HOME` because if unset then Docker BuildKit will create a
+    // `.docker` directory in the working directory during builds.
+    cmd.env("HOME", env!("HOME"));
 
     cmd
 }
@@ -81,30 +84,29 @@ fn assert_build_result(cmd_result: AssertOutput, tagged_name: &str)
     -> DockerBuild
 {
     let cmd_result = cmd_result.code(0);
-    let cmd_result = cmd_result.stderr("");
 
-    let stdout = new_str_from_cmd_stdout(&cmd_result);
-    let maybe_build = assert_docker_build_stdout(stdout);
+    let stderr = new_str_from_cmd_stderr(&cmd_result);
+    let maybe_build = assert_docker_build_stderr(stderr);
 
     if let Some(build) = maybe_build {
         assert_eq!(build.tagged_name(), tagged_name);
 
         build
     } else {
-        panic!("build was unsuccessful: {}", stdout);
+        panic!("build was unsuccessful: {stderr}");
     }
 }
 
-pub fn new_str_from_cmd_stdout(cmd_result: &AssertOutput) -> &str {
-    let stdout_bytes = &cmd_result.get_output().stdout;
+pub fn new_str_from_cmd_stderr(cmd_result: &AssertOutput) -> &str {
+    let stderr_bytes = &cmd_result.get_output().stderr;
 
-    str::from_utf8(stdout_bytes)
-        .expect("couldn't decode STDOUT")
+    str::from_utf8(stderr_bytes)
+        .expect("couldn't decode STDERR")
 }
 
-pub fn assert_docker_build_stdout(stdout: &str) -> Option<DockerBuild> {
-    let mut lines = LineMatcher::new(stdout);
-    let result = DockerBuild::parse_from_stdout(&mut lines);
+pub fn assert_docker_build_stderr(stderr: &str) -> Option<DockerBuild> {
+    let mut lines = LineMatcher::new(stderr);
+    let result = DockerBuild::parse_from_stderr(&mut lines);
 
     match result {
         Ok(v) => {
@@ -112,7 +114,7 @@ pub fn assert_docker_build_stdout(stdout: &str) -> Option<DockerBuild> {
         },
         Err(e) => {
             let lnum = lines.line_num();
-            let msg = line_matcher::render_match_error(stdout, lnum, &e);
+            let msg = line_matcher::render_match_error(stderr, lnum, &e);
             panic!("{}", msg);
         },
     }
@@ -308,6 +310,9 @@ fn new_test_cmd_with_stdin(stdin: Stdin, image_tagged_name: &str)
         .expect("couldn't create command for package binary");
     cmd.args(vec!["rebuild", image_tagged_name, "-"]);
     cmd.env_clear();
+    // We set `HOME` because if unset then Docker BuildKit will create a
+    // `.docker` directory in the working directory during builds.
+    cmd.env("HOME", env!("HOME"));
 
     match stdin {
         Stdin::File(path) => {
@@ -354,7 +359,7 @@ fn cleanup_succeeds_even_if_image_not_removed() {
         assert_run::assert_run_stdout("docker", rm_args);
     }
     // (3)
-    let mut dockerfile = format!("FROM {}\n", base_img);
+    let mut dockerfile = format!("FROM {base_img}\n");
     let stdin = Stdin::Str(dockerfile.clone());
     let test_img = test_setup::test_image_tagged_name(test_name);
     // (4)

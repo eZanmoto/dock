@@ -123,8 +123,8 @@ fn shell_debug_flag() {
     };
 
     pty.expect(r"[$] docker build ");
-    pty.expect(r"[>] Sending build context to Docker ");
-    pty.expect(r"[>] Successfully built ");
+    pty.expect(r"building with");
+    pty.expect(r"exporting to image");
     pty.expect(r"[$] docker run ");
 
     pty.expect("/ # ");

@@ -37,6 +37,9 @@ fn new_test_cmd(
     cmd.args(vec!["rebuild", image_tagged_name, "."]);
     cmd.current_dir(root_test_dir);
     cmd.env_clear();
+    // We set `HOME` because if unset then Docker BuildKit will create a
+    // `.docker` directory in the working directory during builds.
+    cmd.env("HOME", env!("HOME"));
 
     cmd
 }
@@ -56,7 +59,7 @@ fn short_tag_argument() {
     });
     let mut cmd = new_test_cmd(test.dir, &test.image_tagged_name);
     let flag = "-t";
-    cmd.args(&[flag, &test.image_tagged_name]);
+    cmd.args([flag, &test.image_tagged_name]);
 
     let cmd_result = cmd.assert();
 
@@ -66,7 +69,7 @@ fn short_tag_argument() {
         // (B)
         .stdout("")
         // (C)
-        .stderr(format!("unsupported argument: `{}`\n", flag));
+        .stderr(format!("unsupported argument: `{flag}`\n"));
 }
 
 #[test]
@@ -84,7 +87,7 @@ fn long_tag_argument() {
     });
     let mut cmd = new_test_cmd(test.dir, &test.image_tagged_name);
     let flag = "--tag";
-    cmd.args(&[flag, &test.image_tagged_name]);
+    cmd.args([flag, &test.image_tagged_name]);
 
     let cmd_result = cmd.assert();
 
@@ -94,7 +97,7 @@ fn long_tag_argument() {
         // (B)
         .stdout("")
         // (C)
-        .stderr(format!("unsupported argument: `{}`\n", flag));
+        .stderr(format!("unsupported argument: `{flag}`\n"));
 }
 
 #[test]
@@ -122,5 +125,5 @@ fn prefix_tag_argument() {
         // (B)
         .stdout("")
         // (C)
-        .stderr(format!("unsupported argument: `{}`\n", arg));
+        .stderr(format!("unsupported argument: `{arg}`\n"));
 }

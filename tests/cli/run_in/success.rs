@@ -64,6 +64,9 @@ pub fn run_test_cmd(root_test_dir: &str, args: &[&str]) -> Assert {
     cmd.args(args);
     cmd.current_dir(root_test_dir);
     cmd.env_clear();
+    // We set `HOME` because if unset then Docker BuildKit will create a
+    // `.docker` directory in the working directory during builds.
+    cmd.env("HOME", env!("HOME"));
 
     if let Ok(v) = env::var(DOCK_HOSTPATHS_VAR_NAME) {
         cmd.env(DOCK_HOSTPATHS_VAR_NAME, v);
@@ -293,6 +296,9 @@ pub fn run_test_cmd_from_subdir(
     cmd.current_dir(p);
 
     cmd.env_clear();
+    // We set `HOME` because if unset then Docker BuildKit will create a
+    // `.docker` directory in the working directory during builds.
+    cmd.env("HOME", env!("HOME"));
 
     cmd.assert()
 }
@@ -905,10 +911,10 @@ fn debug_flag() {
         // (B)
         .stderr("")
         // (C)
-        .stdout(predicate_match(r"\[\$\] docker build .*"))
-        .stdout(predicate_match(r"\[>\] Sending build context to Docker .*"))
-        .stdout(predicate_match(r"\[>\] Step 1/2 : FROM .*"))
-        .stdout(predicate_match(r"\[>\] Successfully built .*"))
+        .stdout(predicate_match(r"\[\$\] docker build "))
+        .stdout(predicate_match(r"\[!\] #[0-9]+ building with .default. "))
+        .stdout(predicate_match(r"\[!\] #[0-9]+ exporting to image"))
+        .stdout(predicate_match(r"\[!\] #[0-9]+ naming to"))
         .stdout(predicate_match(r"\[\$\] docker run .*"))
         .stdout(predicate_match(r"hello"));
     docker::assert_image_exists(&test.image_tagged_name);
@@ -917,9 +923,7 @@ fn debug_flag() {
 pub fn predicate_match(s: &str) -> RegexPredicate {
     predicate_str::is_match(s)
         .unwrap_or_else(|e| panic!(
-            "couldn't generate a pattern match for '{}': {}",
-            s,
-            e,
+            "couldn't generate a pattern match for '{s}': {e}",
         ))
 }
 
@@ -1033,7 +1037,7 @@ fn run_test_cmd_with_pty(root_test_dir: &str, args: &[&str]) -> PtyResult {
         } else if i > 10 {
             let output = str::from_utf8(&raw_output)
                 .expect("output wasn't valid UTF-8");
-            panic!("process didn't exit within timeout: {}", output);
+            panic!("process didn't exit within timeout: {output}");
         }
 
         thread::sleep(Duration::from_secs(1));
@@ -1081,11 +1085,11 @@ impl PtyResult {
     fn code(self, exp: i32) -> PtyResult {
         if let Some(code) = self.exit_status.code() {
             if code != exp {
-                self.fail(&format!("unexpected exit code: expected {}", exp));
+                self.fail(&format!("unexpected exit code: expected {exp}"));
             }
         } else {
             let status = self.exit_status;
-            self.fail(&format!("couldn't extract exit code: {}", status));
+            self.fail(&format!("couldn't extract exit code: {status}"));
         }
 
         self
@@ -1108,7 +1112,7 @@ impl PtyResult {
         let indented_summary = prefix_lines("    ", &summary)
             .expect("invalid UTF-8");
 
-        panic!("\n{}", indented_summary);
+        panic!("\n{indented_summary}");
     }
 }
 
@@ -1355,7 +1359,7 @@ fn run_in_with_extended_env_flag() {
         dockerfile_steps: "",
         fs: &hashmap!{},
     });
-    let env_arg = &format!("{}-env:", test_name);
+    let env_arg = &format!("{test_name}-env:");
 
     let cmd_result = run_test_cmd(&test.dir, &[env_arg, "echo", "hi"]);
 

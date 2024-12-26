@@ -1,6 +1,8 @@
-// Copyright 2022 Sean Kelleher. All rights reserved.
+// Copyright 2022-2024 Sean Kelleher. All rights reserved.
 // Use of this source code is governed by an MIT
 // licence that can be found in the LICENCE file.
+
+use regex::Regex;
 
 use crate::line_matcher::AssertError;
 use crate::line_matcher::LineMatcher;
@@ -8,64 +10,88 @@ use crate::line_matcher::LineMatcher;
 #[derive(Debug)]
 pub struct DockerBuild {
     tagged_name: String,
-    layers: Vec<DockerBuildLayer>,
+    img_id: String,
 }
 
 impl DockerBuild {
-    // `parse_from_stdout` returns `Ok(None)` if the build parsed from `stdout`
+    // `parse_from_stderr` returns `Ok(None)` if the build parsed from `stderr`
     // was unsuccessful.
-    pub fn parse_from_stdout<'a>(lines: &mut LineMatcher)
-        -> Result<Option<DockerBuild>, AssertError<'a>>
+    //
+    // NOTE This parse depends on the specific STDERR returned by the Docker
+    // client. This parse able to handle `Docker Engine - Community` version
+    // `23.0.3` of the Docker client.
+    pub fn parse_from_stderr(lines: &mut LineMatcher)
+        -> Result<Option<DockerBuild>, AssertError>
     {
-        lines.assert_prefix("Sending build context to Docker daemon ")?;
-        lines.assert_prefix("Step 1/")?;
-        lines.assert_prefix(" ---> ")?;
+        let img_id;
+        loop {
+            let line =
+                if let Some(line) = lines.peek() {
+                    line
+                } else {
+                    return Err(AssertError::UnexpectedEof);
+                };
 
-        let mut layers = vec![];
-        while !lines.skip_if_starts_with("Successfully built ") {
+            // The following marker indicates that a command run in a layer
+            // returned non-zero and so the overall build failed.
+            let re = Regex::new(r"^------$")
+                .expect("couldn't construct error marker matcher");
 
-            lines.assert_prefix("Step ")?;
-
-            if !lines.skip_if_starts_with(" ---> Using cache")
-                && lines.skip_if_starts_with(" ---> Running in ") {
-
-                let msg = "Removing intermediate container ";
-                lines.assert_skip_until_starts_with(msg)?;
-
-                // If a command run in a layer returns non-zero then the STDOUT
-                // will finish after outputting the above message, because
-                // `docker build` is internally run with `--force-rm`.
-                if lines.peek().is_none() {
-                    return Ok(None);
-                }
+            if re.is_match(line) {
+                return Ok(None);
             }
 
-            let layer_id = lines.assert_strip_prefix(" ---> ")?;
-            layers.push(DockerBuildLayer{id: layer_id.to_string()});
+            let re = Regex::new(r"#[0-9]+ writing image sha256:([a-z0-9]+)")
+                .expect("couldn't construct image ID matcher");
+
+            if let Some(cap) = re.captures(line) {
+                img_id =
+                    cap
+                        .get(1)
+                        .expect("couldn't get capture group")
+                        .as_str()
+                        .to_string();
+
+                break;
+            }
+
+            lines.next_line();
         }
 
-        let tagged_name = lines.assert_strip_prefix("Successfully tagged ")?
-            .to_string();
+        let tagged_name;
+        loop {
+            let line =
+                if let Some(line) = lines.peek() {
+                    line
+                } else {
+                    return Err(AssertError::UnexpectedEof);
+                };
 
-        lines.assert_eof()?;
+            let re = Regex::new(r"#[0-9]+ naming to docker.io/([^ ]+)")
+                .expect("couldn't construct image name matcher");
 
-        Ok(Some(DockerBuild{tagged_name, layers}))
+            if let Some(cap) = re.captures(line) {
+                tagged_name =
+                    cap
+                        .get(1)
+                        .expect("couldn't get capture group")
+                        .as_str()
+                        .to_string();
+
+                break;
+            }
+
+            lines.next_line();
+        }
+
+        Ok(Some(DockerBuild{tagged_name, img_id}))
     }
 
     pub fn tagged_name(&self) -> &str {
         &self.tagged_name
     }
 
-    // TODO Consider returning `&str`.
     pub fn img_id(&self) -> &str {
-        &self.layers
-            .last()
-            .expect("Docker build had no layers")
-            .id
+        &self.img_id
     }
-}
-
-#[derive(Debug)]
-pub struct DockerBuildLayer {
-    id: String,
 }

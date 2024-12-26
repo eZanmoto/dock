@@ -1,4 +1,4 @@
-// Copyright 2022 Sean Kelleher. All rights reserved.
+// Copyright 2022-2024 Sean Kelleher. All rights reserved.
 // Use of this source code is governed by an MIT
 // licence that can be found in the LICENCE file.
 
@@ -67,11 +67,11 @@ where
     // returned an unexpected error.
     let tag_result =
         Command::new("docker")
-            .args(&["tag", target_img, cache_img])
+            .args(["tag", target_img, cache_img])
             .output()
             .context(TagFailed)?;
 
-    let tag_flag = &format!("--tag={}", target_img);
+    let tag_flag = &format!("--tag={target_img}");
 
     // By default, Docker removes intermediate containers after a successful
     // build, but leaves them after a failed build. We use `--force-rm` to
@@ -89,14 +89,14 @@ where
     // tagging succeeded.
     if tag_result.status.success() {
         if build_success {
-            docker::assert_run(&["rmi", cache_img])
+            docker::assert_run(["rmi", cache_img])
                 .with_context(|| RemoveOldImageFailed{
                     build_result: build_result.clone(),
                 })?;
         } else {
             // TODO Investigate whether this is needed, and whether `cache_img`
             // still exists after this runs.
-            docker::assert_run(&["tag", cache_img, target_img])
+            docker::assert_run(["tag", cache_img, target_img])
                 .with_context(|| UntagFailed{
                     build_result: build_result.clone(),
                 })?;

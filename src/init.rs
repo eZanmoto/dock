@@ -1,4 +1,4 @@
-// Copyright 2022 Sean Kelleher. All rights reserved.
+// Copyright 2022-2024 Sean Kelleher. All rights reserved.
 // Use of this source code is governed by an MIT
 // licence that can be found in the LICENCE file.
 
@@ -214,7 +214,7 @@ impl DirTemplatesSource {
         let raw_dir = dir.to_str()
             .context(InvalidUtf8Dir{path: self.path.clone()})?;
 
-        run_in::assert_run("cp", &["-r", self.path.as_str(), raw_dir])
+        run_in::assert_run("cp", ["-r", self.path.as_str(), raw_dir])
             .context(CopyDirFailed{path: self.path.clone()})?;
 
         Ok(())
@@ -254,7 +254,7 @@ pub fn init(
     }
 
     // TODO Avoid creating a temporary directory on each run.
-    let output = run_in::assert_run("mktemp", &["--directory"])
+    let output = run_in::assert_run("mktemp", ["--directory"])
         .context(CreateTmpDirFailed)?;
 
     let raw_tmp_dir = str::from_utf8(&output.stdout)
@@ -295,14 +295,6 @@ pub enum InitError {
         source,
     ))]
     CloneSourceFailed{source: CloneToError, dest: PathBuf},
-    #[snafu(display(
-        "Couldn't read template directory '{}': {}",
-        template_dir.display(),
-        source,
-    ))]
-    ReadTemplateDirFailed{source: IoError, template_dir: PathBuf},
-    #[snafu(display("Couldn't read template entry: {}", source))]
-    ReadTemplateEntryFailed{source: IoError},
     #[snafu(display(
         "Couldn't copy template from '{}': {}",
         start_dir.display(),
@@ -388,7 +380,7 @@ where
     F: FnMut(&DirEntry, FileType) -> Result<(), E>,
     E: 'static + Debug + Display + StdError,
 {
-    let entries = fs::read_dir(&dir)
+    let entries = fs::read_dir(dir)
         .context(ReadDirFailed{dir})?;
 
     let mut frontier: Vec<Result<DirEntry, IoError>> = entries.collect();

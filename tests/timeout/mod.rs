@@ -1,12 +1,10 @@
-// Copyright 2022 Sean Kelleher. All rights reserved.
+// Copyright 2022-2024 Sean Kelleher. All rights reserved.
 // Use of this source code is governed by an MIT
 // licence that can be found in the LICENCE file.
 
 use std::env;
 use std::fs::File;
 use std::fs::OpenOptions;
-use std::io::Error as IoError;
-use std::io::Read;
 use std::io::Write;
 use std::os::unix::io::AsRawFd;
 use std::os::unix::io::FromRawFd;
@@ -25,24 +23,16 @@ use crate::snafu::Snafu;
 /// `FdReadWriter` is a readable and writeable interface to a file descriptor
 /// where a timeout parameter can be provided for these operations.
 pub struct FdReadWriter {
-    // `fds` only contains the single file descriptor for this object.
-    fds: FdSet,
-
-    // `file` is a readable and writable interface to the file descriptor for
-    // this object.
-    //
-    // NOTE `file` "owns" the file descriptor for this object, but `fds` still
-    // contains a reference to it. See the comment in `from_raw_fd` for more
-    // details on this.
-    file: File,
+    fd: RawFd,
 }
 
 impl FdReadWriter {
     pub fn read(&mut self, buf: &mut [u8], timeout: Option<TimeVal>)
         -> Result<Option<usize>, Error>
     {
-        let mut read_fds = self.fds;
         let mut t = timeout;
+        let mut read_fds = FdSet::new();
+        read_fds.insert(self.fd);
 
         // TODO We would ideally provide `error_fds` in order to check for
         // error conditions on `self.fds`, but tests to trigger this behaviour
@@ -63,7 +53,7 @@ impl FdReadWriter {
             return Ok(None);
         }
 
-        let num_bytes = self.file.read(buf)
+        let num_bytes = unistd::read(self.fd, buf)
             // TODO Investigate whether this failure can occur.
             .context(OperationFailed)?;
 
@@ -76,8 +66,9 @@ impl FdReadWriter {
         // NOTE All of the comments defined in `read()` also apply to this
         // method.
 
-        let mut write_fds = self.fds;
         let mut t = timeout;
+        let mut write_fds = FdSet::new();
+        write_fds.insert(self.fd);
 
         let num_fds = select::select(None, None, &mut write_fds, None, &mut t)
             .context(SelectFailed)?;
@@ -86,7 +77,7 @@ impl FdReadWriter {
             return Ok(None);
         }
 
-        let num_bytes = self.file.write(buf)
+        let num_bytes = unistd::write(self.fd, buf)
             .context(OperationFailed)?;
 
         Ok(Some(num_bytes))
@@ -95,31 +86,14 @@ impl FdReadWriter {
 
 impl FromRawFd for FdReadWriter {
     unsafe fn from_raw_fd(fd: RawFd) -> Self {
-        let mut fds = FdSet::new();
-        fds.insert(fd);
-
-        // NOTE According to the documentation for the `FromRawFd` trait:
-        //
-        // > This function consumes ownership of the specified file descriptor.
-        // > The returned object will take responsibility for closing it when
-        // > the object goes out of scope.
-        //
-        // Note that we retain access to the underlying `fd` through the `fds`
-        // field, which we use with `select` to determine when `fd` is ready
-        // for reading/writing. This violates the ownership contract described
-        // above and so may result in unexpected behaviour if not used
-        // carefully.
-        let file = File::from_raw_fd(fd);
-
-        Self{fds, file}
+        Self{fd}
     }
-
 }
 
 #[derive(Debug, Snafu)]
 pub enum Error {
     SelectFailed{source: Errno},
-    OperationFailed{source: IoError},
+    OperationFailed{source: Errno},
 }
 
 #[cfg(test)]
@@ -166,7 +140,7 @@ mod tests {
     }
 
     fn assert_write_test_file(test_name: &str, content: &[u8]) -> String {
-        let path = format!("{}/{}", TEST_DIR, test_name);
+        let path = format!("{TEST_DIR}/{test_name}");
 
         // TODO Create a new sub-test directory to contain test files.
         let mut f =
