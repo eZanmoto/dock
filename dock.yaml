@@ -18,9 +18,8 @@ environments:
       CARGO_HOME: /cargo
 
     # We run the `cross` build environment as `root` instead of mounting the
-    # local user because version 0.2.1 of `cross` requires the active user to
-    # have a username; see <https://github.com/rust-embedded/cross/pull/505> for
-    # more details.
+    # local user because the latter causes permission errors. TODO Investigate
+    # running the `cross` build environment as non-`root`.
     mount_local:
     - docker
     - project_dir

@@ -1,4 +1,4 @@
-# Copyright 2022 Sean Kelleher. All rights reserved.
+# Copyright 2022-2024 Sean Kelleher. All rights reserved.
 # Use of this source code is governed by an MIT
 # licence that can be found in the LICENCE file.
 
@@ -43,8 +43,7 @@ bash scripts/with_build_env.sh \
         -c "
             cargo \
                     build \
-                && target/debug/dock run-in cross-env: \
-                    $dock_flags \
+                && target/debug/dock run-in $dock_flags cross-env: \
                     cross build \
                         --release \
                         --target '$target'

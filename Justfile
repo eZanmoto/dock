@@ -25,6 +25,9 @@ export TEST_BASE_IMG := test_base_img_name + ':' + test_base_img_tag
 default:
     just --list
 
+build_release target='x86_64-unknown-linux-musl':
+    bash scripts/build_release.sh '{{target}}'
+
 # Run all checks.
 check *tests: && check_lint
     just check_intg {{tests}}

@@ -4,6 +4,8 @@
 
 FROM rust:1.83.0-bullseye
 
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
 RUN \
     rustup component add \
             clippy
