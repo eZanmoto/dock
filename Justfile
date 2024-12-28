@@ -32,13 +32,13 @@ build_release target='x86_64-unknown-linux-musl':
 check *tests: && check_lint
     just check_intg {{tests}}
 
-# We run `clean_images` before starting the tests in order to make the tests
+# We run `clean_tests` before starting the tests in order to make the tests
 # more deterministic, because having leftover images from previous runs can
 # cause the output from `docker build` to be altered (due to the use of
 # caching).
 
 # Run integration tests.
-check_intg *tests: clean_images remake_test_dir
+check_intg *tests: clean_tests remake_test_dir
     @# We pull base Docker images required by the tests, even though they'd
     @# automatically be pulled during builds, in order to make the output more
     @# predictable.
@@ -81,14 +81,16 @@ remake_test_dir:
     mkdir '{{tgt_test_dir}}'
 
 # Remove all test artefacts created in Docker.
-clean: clean_images clean_volumes
+clean_tests: clean_test_images clean_test_volumes
 
 # Remove all test images.
-clean_images:
+clean_test_images:
     bash scripts/clean_images.sh "$TEST_IMG_NAMESPACE"
     # TODO Remove hard-coded namespace.
     bash scripts/clean_images.sh "org/proj"
 
 # Remove all test volumes.
-clean_volumes:
+clean_test_volumes:
     bash scripts/clean_volumes.sh '{{test_vol_namespace}}'
+    # TODO Remove hard-coded namespace.
+    bash scripts/clean_volumes.sh 'org.proj'

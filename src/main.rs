@@ -19,6 +19,7 @@ use clap::ArgMatches;
 use clap::Command;
 
 mod canon_path;
+mod clean;
 mod cmd_loggers;
 mod docker;
 mod fs;
@@ -56,6 +57,8 @@ const TTY_FLAG: &str = "tty";
 const SKIP_REBUILD_FLAG: &str = "skip-rebuild";
 const SOURCE_FLAG: &str = "source";
 const TEMPLATE_FLAG: &str = "template";
+const SKIP_IMAGES_FLAG: &str = "skip-images";
+const SKIP_VOLUMES_FLAG: &str = "skip-volumes";
 
 const DEFAULT_CACHE_TAG: &str = "cached";
 
@@ -79,6 +82,9 @@ fn main() {
          tag will be replaced by `{CACHE_TAG_FLAG}` for the duration of the \
          rebuild.",
     );
+    let clean_about: &str =
+        "Remove Docker resources associated with the environments defined in \
+         {dock_file_name}";
 
     let args =
         Command::new("dock")
@@ -167,6 +173,28 @@ fn main() {
                                  project",
                             ),
                     ]),
+                Command::new("clean")
+                    .about(clean_about)
+                    .args(&[
+                        Arg::new(DEBUG_FLAG)
+                            .short('D')
+                            .long(DEBUG_FLAG)
+                            .help("Output debugging information"),
+                        Arg::new(SKIP_IMAGES_FLAG)
+                            .short('I')
+                            .long(SKIP_IMAGES_FLAG)
+                            .help(
+                                "Don't remove images associated with the \
+                                 current project",
+                            ),
+                        Arg::new(SKIP_VOLUMES_FLAG)
+                            .short('V')
+                            .long(SKIP_VOLUMES_FLAG)
+                            .help(
+                                "Don't remove volumes associated with the \
+                                 current project",
+                            ),
+                    ]),
             ])
             .get_matches();
 
@@ -199,6 +227,10 @@ fn handle_arg_matches(args: &ArgMatches, dock_file_name: &str) {
         },
         Some(("init", sub_args)) => {
             let exit_code = init(dock_file_name, sub_args);
+            process::exit(exit_code);
+        },
+        Some(("clean", sub_args)) => {
+            let exit_code = clean(dock_file_name, sub_args);
             process::exit(exit_code);
         },
         Some((arg_name, sub_args)) => {
@@ -499,5 +531,45 @@ impl FileActionLogger for WriterFileActionLogger<'_> {
             };
 
         writeln!(self.w, "{} '{}'", msg, file.display())
+    }
+}
+
+fn clean(dock_file_name: &str, args: &ArgMatches) -> i32 {
+    let mut stdout = io::stdout();
+
+    let debug = args.is_present(DEBUG_FLAG);
+    let mut logger =
+        if debug {
+            let logger = PrefixingCmdLogger::new(
+                &mut stdout,
+                b"[$] ",
+                Prefixer::new(b"[>] "),
+                Prefixer::new(b"[!] "),
+            );
+            let timing_logger = TimingPrefixingCmdLogger::new(logger, b"[@] ");
+
+            CmdLoggers::Debugging(timing_logger)
+        } else {
+            CmdLoggers::Capturing(CapturingCmdLogger::new())
+        };
+
+    let result = clean::clean(
+        &mut logger,
+        dock_file_name,
+        !args.is_present(SKIP_IMAGES_FLAG),
+        !args.is_present(SKIP_VOLUMES_FLAG),
+    );
+
+    // TODO Check if the prefixing command logger has an error.
+
+    match result {
+        Ok(()) => {
+            0
+        },
+        Err(err) => {
+            eprintln!("{err}");
+
+            1
+        },
     }
 }

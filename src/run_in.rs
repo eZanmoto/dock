@@ -16,7 +16,6 @@ use std::os::unix::fs::MetadataExt;
 use std::os::unix::process::CommandExt;
 use std::path::PathBuf;
 use std::process::Command;
-
 use std::process::ExitStatus;
 use std::process::Output;
 use std::process::Stdio;
@@ -52,32 +51,32 @@ use crate::trie::InsertError;
 use crate::trie::Trie;
 
 #[derive(Deserialize)]
-struct DockConfig {
-    schema_version: String,
-    organisation: String,
-    project: String,
-    default_shell_env: String,
-    environments: HashMap<String, DockEnvironmentConfig>
+pub struct DockConfig {
+    pub schema_version: String,
+    pub organisation: String,
+    pub project: String,
+    pub default_shell_env: String,
+    pub environments: HashMap<String, DockEnvironmentConfig>
 }
 
 // TODO Consider whether to automatically deserialise `PathBuf`s using `serde`,
 // or to read them as `String`s and parse them directly.
 #[derive(Deserialize)]
-struct DockEnvironmentConfig {
-    context: Option<PathBuf>,
-    workdir: Option<String>,
-    build_args: Option<Vec<String>>,
-    run_args: Option<Vec<String>>,
-    env: Option<HashMap<String, String>>,
-    cache_volumes: Option<HashMap<String, PathBuf>>,
-    mounts: Option<HashMap<PathBuf, PathBuf>>,
-    mount_local: Option<Vec<DockEnvironmentMountLocalConfig>>,
-    shell: Option<PathBuf>,
+pub struct DockEnvironmentConfig {
+    pub context: Option<PathBuf>,
+    pub workdir: Option<String>,
+    pub build_args: Option<Vec<String>>,
+    pub run_args: Option<Vec<String>>,
+    pub env: Option<HashMap<String, String>>,
+    pub cache_volumes: Option<HashMap<String, PathBuf>>,
+    pub mounts: Option<HashMap<PathBuf, PathBuf>>,
+    pub mount_local: Option<Vec<DockEnvironmentMountLocalConfig>>,
+    pub shell: Option<PathBuf>,
 }
 
 #[derive(Debug, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
-enum DockEnvironmentMountLocalConfig {
+pub enum DockEnvironmentMountLocalConfig {
     User,
     Group,
     ProjectDir,
@@ -168,7 +167,7 @@ pub fn run_in(
     }
 
     let vol_name_prefix =
-        format!("{}.{}.{}", conf.organisation, conf.project, env_name);
+        cache_vol_name_prefix(&conf.organisation, &conf.project, env_name);
 
     let mut run_args = to_strings(&["run"]);
 
@@ -268,11 +267,11 @@ pub enum RunInError {
     ExecFailed{source: IoError},
 }
 
-fn image_name(org: &str, proj: &str, env_name: &str) -> String {
+pub fn image_name(org: &str, proj: &str, env_name: &str) -> String {
     format!("{org}/{proj}.{env_name}")
 }
 
-fn find_and_parse_dock_config(dock_file_name: &str)
+pub fn find_and_parse_dock_config(dock_file_name: &str)
     -> Result<(AbsPath, DockConfig), FindAndParseDockConfigError>
 {
     let cwd = env::current_dir()
@@ -613,7 +612,7 @@ fn prepare_run_cache_volumes_args(
         let path_cli_arg = path_abs_path.display()
             .context(RenderCacheVolDirFailed{dir: path_abs_path})?;
 
-        let vol_name = format!("{vol_name_prefix}.cache.{name}");
+        let vol_name = cache_vol_name(vol_name_prefix, name);
         let mount_spec =
             format!("type=volume,src={vol_name},dst={path_cli_arg}");
         let mount_arg = format!("--mount={mount_spec}");
@@ -659,7 +658,15 @@ fn prepare_run_cache_volumes_args(
     Ok(args)
 }
 
-fn new_os_strs<'a>(strs: &'a [&'a str]) -> Vec<&'a OsStr> {
+pub fn cache_vol_name_prefix(org: &str, proj: &str, env_name: &str) -> String {
+    format!("{org}.{proj}.{env_name}")
+}
+
+pub fn cache_vol_name(vol_name_prefix: &str, name: &str) -> String {
+    format!("{vol_name_prefix}.cache.{name}")
+}
+
+pub fn new_os_strs<'a>(strs: &'a [&'a str]) -> Vec<&'a OsStr> {
     strs
         .iter()
         .map(OsStr::new)

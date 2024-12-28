@@ -352,6 +352,11 @@ Behind the scenes, `dock shell` passes the same default flags to `docker run` as
 * `--network=host`: This allows services run inside the container to be accessed
   as if they were running on the host.
 
+### `dock clean`
+
+`dock clean` removes all images and cache volumes associated with the current
+project.
+
 Development
 -----------
 

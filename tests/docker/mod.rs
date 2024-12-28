@@ -79,6 +79,22 @@ pub fn assert_image_doesnt_exist(image_tagged_name: &str) {
     assert!(!image_exists(image_tagged_name));
 }
 
+pub fn assert_volume_exists(name: &str) {
+    assert!(volume_exists(name));
+}
+
+pub fn volume_exists(name: &str) -> bool {
+    assert_run::assert_run_stdout_lines(
+        "docker",
+        &["volume", "ls", "--format={{.Name}}"],
+    )
+        .contains(&name.to_owned())
+}
+
+pub fn assert_volume_doesnt_exist(name: &str) {
+    assert!(!volume_exists(name));
+}
+
 // `assert_get_local_image_tagged_names` returns a `Vec` of the tagged image
 // names for all the Docker images found on the local Docker server.
 pub fn assert_get_local_image_tagged_names() -> Vec<String> {
@@ -115,7 +131,7 @@ pub fn assert_remove_volume(name: &str) {
         ));
 
     let allowable_stderr = format!(
-        "Error response from daemon: No such volume: {name}\n",
+        "Error response from daemon: get {name}: no such volume\n",
     );
     assert!(stderr == allowable_stderr, "unexpected STDERR: {output:?}");
 }
